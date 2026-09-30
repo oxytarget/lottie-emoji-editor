@@ -1,4 +1,4 @@
-import { gunzipSync, gzipSync, strFromU8, strToU8, zipSync } from 'fflate';
+import { gunzipSync, gzipSync, strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { LottieAnimation } from './types';
 
 /** Telegram limits for animated (TGS) custom emoji and stickers. */
@@ -80,10 +80,45 @@ export function slug(input: string, fallback = 'emoji'): string {
   return s || fallback;
 }
 
-/** Reads a `.tgs` (gzip) or `.json` Lottie file. */
+const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml' };
+
+function base64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/**
+ * The first animation of a dotLottie (`.lottie`, a zip: manifest + animations + images) as plain Lottie JSON,
+ * with its images put inline (both the v1 `animations/`+`images/` and the v2 `a/`+`i/` layouts).
+ */
+function readDotLottie(bytes: Uint8Array): string {
+  const files = unzipSync(bytes);
+  const manifest = files['manifest.json'] ? (JSON.parse(strFromU8(files['manifest.json'])) as { animations?: Array<{ id?: string }> }) : {};
+  const id = manifest.animations?.[0]?.id;
+  const path =
+    (id && [`animations/${id}.json`, `a/${id}.json`].find((p) => files[p])) ??
+    Object.keys(files).find((p) => /^(animations|a)\/[^/]+\.json$/.test(p));
+  if (!path) throw new Error('No animation in the .lottie file');
+  const data = JSON.parse(strFromU8(files[path])) as { assets?: Array<Record<string, unknown>> };
+  for (const asset of data.assets ?? []) {
+    if (typeof asset.p !== 'string' || asset.e === 1 || asset.p.startsWith('data:')) continue;
+    const name = asset.p.split('/').pop()!;
+    const file = files[`images/${name}`] ?? files[`i/${name}`];
+    if (!file) continue;
+    const type = IMAGE_TYPES[name.split('.').pop()!.toLowerCase()] ?? 'image/png';
+    asset.p = `data:${type};base64,${base64(file)}`;
+    asset.u = '';
+    asset.e = 1;
+  }
+  return JSON.stringify(data);
+}
+
+/** Reads a `.tgs` (gzip), `.json` or `.lottie` (dotLottie zip) animation. */
 export function readLottieFile(bytes: Uint8Array): LottieAnimation {
   const isGzip = bytes[0] === 0x1f && bytes[1] === 0x8b;
-  const text = isGzip ? strFromU8(gunzipSync(bytes)) : strFromU8(bytes);
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+  const text = isGzip ? strFromU8(gunzipSync(bytes)) : isZip ? readDotLottie(bytes) : strFromU8(bytes);
   const data = JSON.parse(text) as LottieAnimation;
   if (!data || typeof data !== 'object' || !Array.isArray(data.layers) || typeof data.w !== 'number' || typeof data.h !== 'number') {
     throw new Error('Not a Lottie animation');

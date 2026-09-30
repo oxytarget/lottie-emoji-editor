@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { packsAvailable, parsePackLink } from '../lib/botApi';
 import { haptic } from '../lib/telegram';
 import { formatKb, readLottieFile } from '../lottie/export';
-import { extractPalette, normalizeForTgs } from '../lottie/imported';
+import { bakeExpressions, hasExpressions } from '../lottie/bake';
+import { compatibilityIssues, extractPalette, normalizeForTgs } from '../lottie/imported';
 import { loadPack, openPack } from '../state/packs';
 import { useEditor, type PackRef } from '../state/store';
 import { useUi } from '../state/ui';
@@ -229,6 +230,7 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
   const addImport = useEditor((s) => s.addImport);
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [packForm, setPackForm] = useState(false);
   const form = usePresence(packForm, 200);
   const main = emojis.filter((e) => !e.pack);
@@ -236,11 +238,16 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
   const onImport = async (file: File | undefined) => {
     if (!file) return;
     setError(false);
+    setImporting(true);
     try {
-      const data = normalizeForTgs(readLottieFile(new Uint8Array(await file.arrayBuffer())));
+      let raw = readLottieFile(new Uint8Array(await file.arrayBuffer()));
+      // Expressions run only in the full web player: bake them so the preview and Telegram play it the same.
+      let baked = 0;
+      if (hasExpressions(raw)) ({ anim: raw, baked } = await bakeExpressions(raw));
+      const data = normalizeForTgs(raw);
       addImport({
         id: `import-${Date.now().toString(36)}`,
-        name: file.name.replace(/\.(tgs|json)$/i, ''),
+        name: file.name.replace(/\.(tgs|json|lottie)$/i, ''),
         data,
         base: data,
         layout: [],
@@ -250,9 +257,12 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
         hidden: [],
         replace: null,
         transforms: {},
+        notes: { baked, issues: compatibilityIssues(data) },
       });
     } catch {
       setError(true);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -273,10 +283,12 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
             type="button"
             className="tile tile-import"
             style={{ '--i': Math.min(main.length, 24) } as React.CSSProperties}
+            aria-busy={importing}
+            disabled={importing}
             onClick={() => fileRef.current?.click()}
           >
-            <PlusIcon width={30} height={30} />
-            <span>{t('importLottie')}</span>
+            {importing ? <span className="tile-spinner" aria-hidden /> : <PlusIcon width={30} height={30} />}
+            <span>{importing ? t('importing') : t('importLottie')}</span>
           </button>
           {packsAvailable() && (
             <button
@@ -301,7 +313,7 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
           ref={fileRef}
           type="file"
           hidden
-          accept=".tgs,.json,application/json,application/gzip"
+          accept=".tgs,.json,.lottie,application/json,application/gzip,application/zip"
           onChange={(e) => {
             onImport(e.target.files?.[0]);
             e.target.value = '';

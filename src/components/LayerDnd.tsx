@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { haptic } from '../lib/telegram';
-import { checkOp, CONTENT_SLOT, INSERTED, parentOf, remapId, type Drop, type LayoutOp } from '../lottie/layout';
+import { checkOp, childList, CONTENT_SLOT, INSERTED, parentOf, remapId, rootOf, type Drop, type LayoutOp } from '../lottie/layout';
 import type { Part } from '../lottie/parts';
 import { useEditor, type FavLogo, type ImportedTemplate } from '../state/store';
 import { useUi } from '../state/ui';
@@ -29,7 +29,10 @@ const canContain = (p: Part | undefined) => !!p && (p.kind === 'precomp' || p.ki
 const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
 function dropOf(hover: Hover, imp: ImportedTemplate): Drop {
-  if (hover.where === 'end') return { parent: '', index: imp.data.layers.length };
+  if (hover.where === 'end') {
+    const root = rootOf(imp.data);
+    return { parent: root, index: childList(imp.data, root)?.list.length ?? 0 };
+  }
   if (hover.where === 'inside') return { parent: hover.id, index: 0 };
   const { parent, index } = parentOf(hover.id);
   return { parent, index: hover.where === 'before' ? index : index + 1 };
@@ -190,7 +193,7 @@ function ContentChip({ imp, onStart }: { imp: ImportedTemplate; onStart: (source
   const name = mode === 'logo' ? t('layerYourLogo') : t('layerYourText');
   const preview = mode === 'logo' ? logo?.name : text.trim().split(/\s+/).join(' ');
   if (mode === 'logo' ? !logo : !text.trim()) return null;
-  const top = () => placeContent(imp, { parent: '', index: 0 }, name);
+  const top = () => placeContent(imp, { parent: rootOf(imp.data), index: 0 }, name);
   return (
     <button
       type="button"
@@ -242,7 +245,7 @@ export function FavLogoStrip({ imp, onStart }: { imp: ImportedTemplate; onStart:
               }
               onStart({ kind: 'logo', logo: f }, e, () => {
                 const key = useEditor.getState().putLayoutSvg(f.svg);
-                applyLayerOp(imp, { kind: 'insert', svg: key, name: `${INSERTED}${f.name}`, at: { parent: '', index: 0 } });
+                applyLayerOp(imp, { kind: 'insert', svg: key, name: `${INSERTED}${f.name}`, at: { parent: rootOf(imp.data), index: 0 } });
               });
             }}
             onKeyDown={(e) => {
@@ -250,7 +253,7 @@ export function FavLogoStrip({ imp, onStart }: { imp: ImportedTemplate; onStart:
               e.preventDefault();
               if (sel.editing) return sel.toggle(f.id);
               const key = useEditor.getState().putLayoutSvg(f.svg);
-              applyLayerOp(imp, { kind: 'insert', svg: key, name: `${INSERTED}${f.name}`, at: { parent: '', index: 0 } });
+              applyLayerOp(imp, { kind: 'insert', svg: key, name: `${INSERTED}${f.name}`, at: { parent: rootOf(imp.data), index: 0 } });
             }}
           >
             <img src={svgUrl(f.svg)} alt="" draggable={false} />

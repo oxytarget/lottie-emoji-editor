@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { haptic } from '../lib/telegram';
 import { CONTENT_CLASS } from '../lottie/compose';
 import { flattenParts, listParts, NO_XF, PART_CLASS, type PartXf } from '../lottie/parts';
-import { recolor } from '../lottie/imported';
+import type { I18nKey } from '../i18n';
+import { recolor, type CompatIssue } from '../lottie/imported';
 import { applyItemPaints, itemGradientClass, listPaintItems, type ItemPaint } from '../lottie/itemPaints';
 import type { GradientPaint, Paint } from '../lottie/paint';
 import { compileOne, type CompileInput } from '../state/compile';
@@ -17,12 +18,21 @@ import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
-import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, StarIcon, TrashIcon } from './icons';
+import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
 import { emojiName } from './TemplateGrid';
 
 const BGS: PreviewBg[] = ['light', 'dark', 'chess'];
+
+const ISSUE_KEYS: Record<CompatIssue, I18nKey> = {
+  expressions: 'issueExpressions',
+  effects: 'issueEffects',
+  text: 'issueText',
+  images: 'issueImages',
+  '3d': 'issue3d',
+  mergePaths: 'issueMergePaths',
+};
 
 /** "Apply to all selected": edits of this animation are repeated on the other selected ones. */
 function SyncBar({ imp }: { imp: ImportedTemplate }) {
@@ -69,8 +79,19 @@ export function ImportedPanel({ id }: { id: string }) {
   const remove = useEditor((s) => s.removeImport);
   const addFavColors = useEditor((s) => s.addFavColors);
   if (!imp) return null;
+  const issues = imp.notes?.issues ?? [];
   return (
     <div className="imported-panel">
+      {imp.notes && imp.notes.baked > 0 && (
+        <p className="note is-ok">
+          <CheckIcon width={16} height={16} strokeWidth={3} /> {t('importBaked').replace('{n}', String(imp.notes.baked))}
+        </p>
+      )}
+      {issues.length > 0 && (
+        <p className="note is-warn">
+          <WarningIcon width={16} height={16} /> {t('importIssues').replace('{list}', issues.map((i) => t(ISSUE_KEYS[i])).join(', '))}
+        </p>
+      )}
       <SyncBar imp={imp} />
       <PartsPanel key={imp.id} imp={imp} />
       <h3 className="section-title">{t('importedPalette')}</h3>

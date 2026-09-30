@@ -1,6 +1,7 @@
 import { artToShapes, fitArt, type ArtStyle, type VectorArt } from '../content/art';
 import { hexToRgba, toHex } from './color';
 import { contentGroup } from './compose';
+import { CANVAS_MN } from './parts';
 import type { Layer, LottieAnimation } from './types';
 
 /**
@@ -175,6 +176,7 @@ export function to60fps(anim: LottieAnimation): LottieAnimation {
 export function fitCanvas(anim: LottieAnimation, size = 512): LottieAnimation {
   if (anim.w === size && anim.h === size) return anim;
   const k = size / Math.max(anim.w, anim.h);
+  if (anim.w !== anim.h) return framed(anim, size, k);
   const rootInd = anim.layers.reduce((m, l) => Math.max(m, typeof l.ind === 'number' ? l.ind : 0), 0) + 1;
   const root: Layer = {
     ddd: 0,
@@ -197,4 +199,59 @@ export function fitCanvas(anim: LottieAnimation, size = 512): LottieAnimation {
   };
   const layers = anim.layers.map((l) => (l.parent === undefined ? { ...l, parent: rootInd } : l));
   return { ...anim, w: size, h: size, layers: [...layers, root] };
+}
+
+/**
+ * A non-square scene goes into a precomp the size of its own frame: a precomp clips to its size, so what was
+ * outside the original frame (oversized backgrounds, things flying in) stays hidden in the letterbox too.
+ * The parts list shows the layers inside it as the top level (`isCanvasFrame`).
+ */
+function framed(anim: LottieAnimation, size: number, k: number): LottieAnimation {
+  const assets = anim.assets ?? [];
+  let id = 'canvas';
+  for (let n = 1; assets.some((a) => isObj(a) && a.id === id); n++) id = `canvas_${n}`;
+  const frame: Layer = {
+    ddd: 0,
+    ind: 1,
+    ty: 0,
+    nm: 'canvas',
+    mn: CANVAS_MN,
+    refId: id,
+    sr: 1,
+    ks: {
+      o: { a: 0, k: 100 },
+      r: { a: 0, k: 0 },
+      p: { a: 0, k: [(size - anim.w * k) / 2, (size - anim.h * k) / 2, 0] },
+      a: { a: 0, k: [0, 0, 0] },
+      s: { a: 0, k: [k * 100, k * 100, 100] },
+    },
+    ao: 0,
+    w: anim.w,
+    h: anim.h,
+    ip: anim.ip,
+    op: anim.op,
+    st: 0,
+    bm: 0,
+  };
+  return { ...anim, w: size, h: size, assets: [...assets, { id, w: anim.w, h: anim.h, layers: anim.layers }], layers: [frame] };
+}
+
+/** Things in a file that Telegram (rlottie) does not show — they may look different there and in the preview. */
+export type CompatIssue = 'expressions' | 'effects' | 'text' | 'images' | '3d' | 'mergePaths';
+
+export function compatibilityIssues(anim: LottieAnimation): CompatIssue[] {
+  const found = new Set<CompatIssue>();
+  if ((anim.ddd as number) === 1) found.add('3d');
+  visit(anim, (obj) => {
+    if (typeof obj.x === 'string' && 'k' in obj && obj.x.trim()) found.add('expressions');
+    if (obj.ty === 'mm') found.add('mergePaths');
+    if (isObj(obj.ks) && typeof obj.ty === 'number') {
+      // A layer: effects with a picture of their own (tint, fill, blur, shadow…); expression controls are fine.
+      if (Array.isArray(obj.ef) && obj.ef.some((e) => isObj(e) && typeof e.ty === 'number' && e.ty >= 20)) found.add('effects');
+      if (obj.ty === 5) found.add('text');
+      if (obj.ty === 2) found.add('images');
+      if (obj.ddd === 1) found.add('3d');
+    }
+  });
+  return [...found];
 }

@@ -177,6 +177,11 @@ export const INSERTED = '★ ';
 const isInserted = (p: Part) => p.name.startsWith(INSERTED);
 /** Match name (`mn`) of a slot for the user's text/logo — a standard Lottie field players ignore. */
 export const SLOT_MN = 'emoji-studio:content';
+/** Match name of the precomp that frames a non-square animation on the square canvas (see `fitCanvas`). */
+export const CANVAS_MN = 'emoji-studio:canvas';
+
+/** The canvas frame is not part of the design: its layers are listed (and dropped into) as the top level. */
+export const isCanvasFrame = (anim: LottieAnimation): boolean => anim.layers.length === 1 && (anim.layers[0] as AnyLayer).mn === CANVAS_MN;
 
 /**
  * Collapses single wrapper groups (common in After Effects exports) so the meaningful groups are listed.
@@ -233,7 +238,8 @@ function layerParts(layers: readonly AnyLayer[], assets: Map<string, Asset>, pre
 
 /** Tree of editable parts, in render order (first = top-most). */
 export function listParts(anim: LottieAnimation): Part[] {
-  return layerParts(anim.layers as AnyLayer[], assetsById(anim), '', new Set());
+  const parts = layerParts(anim.layers as AnyLayer[], assetsById(anim), '', new Set());
+  return isCanvasFrame(anim) ? parts[0].children : parts;
 }
 
 export function flattenParts(parts: readonly Part[]): Part[] {

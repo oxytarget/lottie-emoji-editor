@@ -9,7 +9,7 @@ import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
 import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ImageIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, TypeIcon, WarningIcon } from './icons';
 import { applyLayerOp, DragGhost, FavLogoStrip, useLayerDnd, type DragSource } from './LayerDnd';
-import { checkOp, INSERTED, parentOf, type Drop } from '../lottie/layout';
+import { checkOp, INSERTED, parentOf, rootOf, type Drop } from '../lottie/layout';
 import { MotionButton, Slider } from './controls';
 import { LayerPaints } from './LayerPaints';
 import { LottieView, useInView } from './LottieView';
@@ -117,7 +117,7 @@ function LayerMoves({ imp, part, flat }: { imp: ImportedTemplate; part: Part; fl
   };
   const upDrop = prev ? { parent: here.parent, index: parentOf(prev.id).index } : null;
   const downDrop = next ? { parent: here.parent, index: parentOf(next.id).index + 1 } : null;
-  const outDrop = here.parent ? { parent: parentOf(here.parent).parent, index: parentOf(here.parent).index } : null;
+  const outDrop = here.parent && here.parent !== rootOf(imp.data) ? { parent: parentOf(here.parent).parent, index: parentOf(here.parent).index } : null;
   const ok = (drop: Drop | null) => !!drop && !checkOp(imp.data, { kind: 'move', part: part.id, at: drop });
   return (
     <div className="row-actions layer-moves">

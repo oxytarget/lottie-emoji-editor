@@ -1,6 +1,6 @@
 import { artToShapes, fitArt, type VectorArt } from '../content/art';
 import { solid } from './paint';
-import { assetsOf, INSERTED, itemsBounds, resolvePart, SLOT_MN, type AnyLayer } from './parts';
+import { assetsOf, INSERTED, isCanvasFrame, itemsBounds, resolvePart, SLOT_MN, type AnyLayer } from './parts';
 import { stat } from './anim';
 import { group } from './shapes';
 import type { LottieAnimation, ShapeItem } from './types';
@@ -69,6 +69,9 @@ export function parseId(id: string): Token[] {
 }
 
 export const formatId = (tokens: readonly Token[]): string => tokens.map((t) => `${t.sep}${t.type}${t.i}`).join('');
+
+/** The list the layer list shows as its top level: the canvas frame of a non-square animation, or the root. */
+export const rootOf = (anim: LottieAnimation): string => (isCanvasFrame(anim) ? 'l0' : '');
 
 /** The part whose list contains `id` ('' for top-level layers) and the index in that list. */
 export function parentOf(id: string): { parent: string; index: number } {

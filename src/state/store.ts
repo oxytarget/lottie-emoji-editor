@@ -5,6 +5,7 @@ import { detectLang } from '../i18n';
 import type { Paint } from '../lottie/paint';
 import { extractPalette } from '../lottie/imported';
 import { applyLayoutOp, checkOp, CONTENT_SLOT, remapEdits, remapId, type Drop, type LayoutOp } from '../lottie/layout';
+import type { CompatIssue } from '../lottie/imported';
 import type { ItemPaint } from '../lottie/itemPaints';
 import { flattenParts, listParts, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
@@ -33,6 +34,8 @@ export interface ImportedTemplate {
   transforms: Record<string, PartXf>;
   /** Colours of single fills/strokes/gradients, by item id (see lottie/itemPaints.ts). */
   paints?: Record<string, ItemPaint>;
+  /** What happened to an imported file: expressions baked into keyframes, features Telegram does not show. */
+  notes?: { baked: number; issues: CompatIssue[] };
   /** Sticker from a Telegram pack (reloaded through the bot on every start). */
   source?: { pack: string; uid: string; emoji: string };
   /** What the pack analysis picked — "reset" goes back to it. */
