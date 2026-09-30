@@ -29,6 +29,8 @@ export interface Compiled {
   svg: SvgImportResult | null;
   /** True while newer edits are still being compiled. */
   pending: boolean;
+  /** Current compile input (for instant single-template previews). */
+  input: CompileInput;
 }
 
 function useFont(fontId: string) {
@@ -149,9 +151,11 @@ export function useCompiled(): Compiled {
       outlineWidth: s.outlineWidth,
       scale: s.scale,
       offsetY: s.offsetY,
+      offsetX: s.offsetX,
+      rotation: s.rotation,
       imports: s.imports.map(({ id, data, colorMap, overlay, hidden, replace }) => ({ id, data, colorMap, overlay, hidden, replace })),
     }),
-    [art, artStyle, s.colors, s.outlineWidth, s.scale, s.offsetY, s.imports],
+    [art, artStyle, s.colors, s.outlineWidth, s.scale, s.offsetY, s.offsetX, s.rotation, s.imports],
   );
 
   const run = useCompileRunner();
@@ -186,5 +190,6 @@ export function useCompiled(): Compiled {
     fontError: error,
     svg,
     pending: result.input !== input,
+    input,
   };
 }

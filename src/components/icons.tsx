@@ -14,14 +14,24 @@ const base = (props: P) => ({
   ...props,
 });
 
-export const DiceIcon = (p: P) => (
+const PIPS: Record<number, Array<[number, number]>> = {
+  1: [[12, 12]],
+  2: [[8.5, 8.5], [15.5, 15.5]],
+  3: [[8.5, 8.5], [12, 12], [15.5, 15.5]],
+  4: [[8.5, 8.5], [15.5, 8.5], [8.5, 15.5], [15.5, 15.5]],
+  5: [[8.5, 8.5], [15.5, 8.5], [12, 12], [8.5, 15.5], [15.5, 15.5]],
+  6: [[8.5, 8], [15.5, 8], [8.5, 12], [15.5, 12], [8.5, 16], [15.5, 16]],
+};
+
+/** Die showing `face` (1–6); pips pop in whenever the face changes. */
+export const DiceIcon = ({ face = 5, ...p }: P & { face?: number }) => (
   <svg {...base(p)}>
     <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" />
-    <circle cx="8.5" cy="8.5" r="1" fill="currentColor" />
-    <circle cx="15.5" cy="8.5" r="1" fill="currentColor" />
-    <circle cx="12" cy="12" r="1" fill="currentColor" />
-    <circle cx="8.5" cy="15.5" r="1" fill="currentColor" />
-    <circle cx="15.5" cy="15.5" r="1" fill="currentColor" />
+    <g key={face} className="dice-pips">
+      {(PIPS[face] ?? PIPS[5]).map(([x, y]) => (
+        <circle key={`${x}-${y}`} cx={x} cy={y} r="1.1" fill="currentColor" />
+      ))}
+    </g>
   </svg>
 );
 export const GradientIcon = (p: P) => (

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { normalizeHex } from '../lottie/color';
 import { useT } from '../state/useT';
+import { usePresence } from './motion';
 
 const SWATCHES = [
   '#ffffff', '#111111', '#6b7280', '#ef4444', '#f97316', '#f59e0b', '#facc15', '#84cc16', '#22c55e',
@@ -21,6 +22,10 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
   const [hex, setHex] = useState(color);
   const wrap = useRef<HTMLDivElement>(null);
   const id = useId();
+  const popover = usePresence(open, 160);
+  const firstColor = useRef(color);
+  const changed = useRef(false);
+  if (color !== firstColor.current) changed.current = true;
 
   useEffect(() => setHex(color), [color]);
 
@@ -54,16 +59,19 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((o) => !o)}
-      />
-      {open && (
-        <div className="popover" id={id} role="dialog" aria-label={label}>
+      >
+        {/* Re-keyed on every colour change: a ring flashes out of the swatch. */}
+        {changed.current && <span key={color} className="swatch-flash" aria-hidden />}
+      </button>
+      {popover.mounted && (
+        <div className="popover" id={id} role="dialog" aria-label={label} data-state={popover.state}>
           <div className="popover-grid">
-            {SWATCHES.map((c) => (
+            {SWATCHES.map((c, i) => (
               <button
                 key={c}
                 type="button"
                 className={`swatch swatch-sm${c === color.toLowerCase() ? ' is-current' : ''}`}
-                style={{ background: c }}
+                style={{ background: c, '--i': i } as React.CSSProperties}
                 aria-label={c}
                 onClick={() => {
                   onChange(c);

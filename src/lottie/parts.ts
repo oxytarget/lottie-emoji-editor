@@ -1,6 +1,6 @@
 import { artToShapes, fitArt, type ArtStyle, type VectorArt } from '../content/art';
 import { applyMatrix, contoursBBox, IDENTITY, multiply, rotateMatrix, type Contour } from './bezier';
-import { group } from './shapes';
+import { contentGroup } from './compose';
 import type { BBox, Bezier, Layer, LottieAnimation, Matrix, ShapeItem } from './types';
 
 /**
@@ -288,6 +288,9 @@ export interface ReplaceContent {
   scale: number;
   /** Height slider (−100…100), applied relative to the replaced part's size. */
   offsetY: number;
+  /** Horizontal offset, relative to the replaced part's size like `offsetY`. */
+  offsetX?: number;
+  rotation?: number;
 }
 
 function contentShapes(box: BBox, content: ReplaceContent): ShapeItem[] {
@@ -299,7 +302,9 @@ function contentShapes(box: BBox, content: ReplaceContent): ShapeItem[] {
   const k = Math.min(1, Math.max(box.w, box.h) / 300);
   const shapes = artToShapes(fitted.items, fitted.bbox, { ...content.artStyle, outlineWidth: content.artStyle.outlineWidth * k });
   const dy = (content.offsetY / 200) * box.h;
-  return shapes.length ? [group(shapes, { p: [box.x + box.w / 2, box.y + box.h / 2 + dy] }, 'replaced-content')] : [];
+  const dx = ((content.offsetX ?? 0) / 200) * box.w;
+  if (!shapes.length) return [];
+  return [{ ...contentGroup(shapes, content.rotation ?? 0, [box.x + box.w / 2 + dx, box.y + box.h / 2 + dy]), nm: 'replaced-content' }];
 }
 
 /** Box a non-shape layer occupies in its own coordinates. */

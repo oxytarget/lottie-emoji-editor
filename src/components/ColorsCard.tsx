@@ -4,7 +4,9 @@ import { useEditor } from '../state/store';
 import { useT } from '../state/useT';
 import type { ColorRole } from '../templates/types';
 import { GradientTools, PaintSwatches, Slider } from './controls';
-import { DiceIcon } from './icons';
+import { AnimIcon } from './motion';
+import { useState } from 'react';
+import { DiceButton } from './controls';
 import type { I18nKey } from '../i18n';
 
 const ROLES: Array<{ role: ColorRole; key: I18nKey }> = [
@@ -16,6 +18,8 @@ const ROLES: Array<{ role: ColorRole; key: I18nKey }> = [
 export function ColorsCard() {
   const t = useT();
   const s = useEditor();
+  // Replays the dots animation of the preset that was just picked.
+  const [spin, setSpin] = useState<{ id: string; n: number }>({ id: '', n: 0 });
   return (
     <section className="card">
       <h3 className="section-title">{t('presets')}</h3>
@@ -26,12 +30,17 @@ export function ColorsCard() {
             type="button"
             role="listitem"
             className={`preset${s.presetId === p.id ? ' is-active' : ''}`}
-            onClick={() => s.applyPreset(p)}
+            onClick={() => {
+              s.applyPreset(p);
+              setSpin((v) => ({ id: p.id, n: v.n + 1 }));
+            }}
           >
-            <span className="preset-dots" aria-hidden>
-              <span style={{ background: paintCss(p.colors.body) }} />
-              <span style={{ background: paintCss(p.colors.accent) }} />
-            </span>
+            <AnimIcon motion="swap" play={spin.id === p.id ? spin.n : 0}>
+              <span className="preset-dots" aria-hidden>
+                <span style={{ background: paintCss(p.colors.body) }} />
+                <span style={{ background: paintCss(p.colors.accent) }} />
+              </span>
+            </AnimIcon>
             {p.name}
           </button>
         ))}
@@ -43,9 +52,7 @@ export function ColorsCard() {
             {t('emojiColors')}
             <em>{t('emojiColorsSub')}</em>
           </h3>
-          <button type="button" className="icon-btn is-round is-accent" title={t('randomColors')} aria-label={t('randomColors')} onClick={s.randomizeEmoji}>
-            <DiceIcon />
-          </button>
+          <DiceButton className="icon-btn is-round is-accent" label={t('randomColors')} onRoll={s.randomizeEmoji} />
         </div>
         <div className="paint-rows">
         {ROLES.map(({ role, key }) => (

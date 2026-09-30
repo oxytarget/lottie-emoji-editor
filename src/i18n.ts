@@ -13,6 +13,12 @@ const dict = {
   bgChess: { uk: 'Прозорий фон', ru: 'Прозрачный фон', en: 'Transparent background' },
   play: { uk: 'Відтворити', ru: 'Воспроизвести', en: 'Play' },
   pause: { uk: 'Пауза', ru: 'Пауза', en: 'Pause' },
+  canvasHint: {
+    uk: 'Тягніть текст/лого на полотні · кути — розмір · ↻ — поворот · два пальці — масштаб і поворот',
+    ru: 'Тяните текст/лого на холсте · углы — размер · ↻ — поворот · два пальца — масштаб и поворот',
+    en: 'Drag the text/logo on the canvas · corners resize · ↻ rotates · two fingers pinch and rotate',
+  },
+  canvasReset: { uk: 'Скинути положення', ru: 'Сбросить положение', en: 'Reset position' },
   inChat: { uk: 'У чаті', ru: 'В чате', en: 'In chat' },
   tabText: { uk: 'Текст', ru: 'Текст', en: 'Text' },
   tabLogo: { uk: 'Лого SVG', ru: 'Лого SVG', en: 'SVG logo' },

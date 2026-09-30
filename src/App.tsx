@@ -1,8 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ColorsCard } from './components/ColorsCard';
 import { ContentCard } from './components/ContentCard';
 import { ExportSheet } from './components/ExportSheet';
+import { MotionButton } from './components/controls';
 import { DownloadIcon, ResetIcon } from './components/icons';
+import { Bump, usePresence, useSlidingIndicator } from './components/motion';
 import { PreviewCard } from './components/PreviewCard';
 import { TemplateGrid } from './components/TemplateGrid';
 import { paintCss } from './lottie/paint';
@@ -32,7 +34,9 @@ function SummaryBar({ selectedCount }: { selectedCount: number }) {
       </div>
       <div className="summary-item">
         <span className="label">{t('summarySelected')}</span>
-        <strong className="summary-count">{selectedCount}</strong>
+        <strong className="summary-count">
+          <Bump value={selectedCount} />
+        </strong>
       </div>
     </div>
   );
@@ -47,6 +51,9 @@ export default function App() {
   const selected = useEditor((s) => s.selected);
   const active = useEditor((s) => s.active);
   const [exportOpen, setExportOpen] = useState(false);
+  const sheet = usePresence(exportOpen, 260);
+  const langRef = useRef<HTMLDivElement>(null);
+  const langPill = useSlidingIndicator(langRef, lang);
   const closeExport = useCallback(() => setExportOpen(false), []);
 
   const selectedEmojis = selected.map((id) => compiled.byId.get(id)).filter((e) => e !== undefined);
@@ -65,22 +72,29 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <div className="lang-switch" role="radiogroup" aria-label="Language">
+          <div className="lang-switch" role="radiogroup" aria-label="Language" ref={langRef}>
+            <span className="slide-pill" style={langPill} aria-hidden />
             {LANGS.map((l) => (
-              <button key={l} type="button" role="radio" aria-checked={lang === l} className={lang === l ? 'is-active' : ''} onClick={() => set('lang', l)}>
+              <button
+                key={l}
+                type="button"
+                role="radio"
+                data-slide-key={l}
+                aria-checked={lang === l}
+                className={lang === l ? 'is-active' : ''}
+                onClick={() => set('lang', l)}
+              >
                 {l.toUpperCase()}
               </button>
             ))}
           </div>
-          <button
-            type="button"
+          <MotionButton
+            motion="spin-back"
             className="icon-btn is-round is-ghost"
-            title={t('reset')}
-            aria-label={t('reset')}
+            label={t('reset')}
+            icon={<ResetIcon />}
             onClick={() => window.confirm(t('resetConfirm')) && reset()}
-          >
-            <ResetIcon />
-          </button>
+          />
         </div>
       </header>
 
@@ -88,7 +102,7 @@ export default function App() {
 
       <main className="layout">
         <div className="area-preview">
-          <PreviewCard emoji={activeEmoji} pending={compiled.pending} />
+          <PreviewCard emoji={activeEmoji} pending={compiled.pending} input={compiled.input} />
         </div>
         <div className="area-controls">
           <ContentCard missing={compiled.missingChars} fontLoading={compiled.fontLoading} svg={compiled.svg} />
@@ -100,12 +114,14 @@ export default function App() {
       </main>
 
       <div className="bottom-bar">
-        <button type="button" className="primary-btn" disabled={selectedEmojis.length === 0} onClick={() => setExportOpen(true)}>
-          <DownloadIcon /> {t('download')} ({selectedEmojis.length})
-        </button>
+        <MotionButton motion="drop" className="primary-btn" label={t('download')} icon={<DownloadIcon />} disabled={selectedEmojis.length === 0} onClick={() => setExportOpen(true)}>
+          <span>
+            {t('download')} (<Bump value={selectedEmojis.length} />)
+          </span>
+        </MotionButton>
       </div>
 
-      {exportOpen && <ExportSheet emojis={selectedEmojis} onClose={closeExport} />}
+      {sheet.mounted && <ExportSheet emojis={selectedEmojis} onClose={closeExport} state={sheet.state} />}
     </div>
   );
 }

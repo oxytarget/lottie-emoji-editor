@@ -6,6 +6,7 @@ import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
 import { useT } from '../state/useT';
 import { ChevronIcon, EyeIcon, EyeOffIcon, ReplaceIcon, ResetIcon, WarningIcon } from './icons';
+import { MotionButton } from './controls';
 import { LottieView, useInView } from './LottieView';
 
 const KIND_KEYS: Record<PartKind, I18nKey> = {
@@ -79,28 +80,26 @@ function PartRow({ part, depth, anim, imp, expanded, toggleExpanded, toggleHidde
           </span>
         </div>
         {part.replaceable && (
-          <button
-            type="button"
+          <MotionButton
+            motion="swap"
             className={`icon-btn is-small${replaced ? ' is-accent' : ''}`}
-            aria-pressed={replaced}
+            pressed={replaced}
             title={t('partsReplace')}
-            aria-label={`${t('partsReplace')}: ${part.name}`}
+            label={`${t('partsReplace')}: ${part.name}`}
+            icon={<ReplaceIcon width={18} height={18} />}
             onClick={() => toggleReplace(part.id)}
-          >
-            <ReplaceIcon width={18} height={18} />
-          </button>
+          />
         )}
-        <button
-          type="button"
+        <MotionButton
+          motion="blink"
           className="icon-btn is-small"
-          aria-pressed={hiddenSelf}
+          pressed={hiddenSelf}
           disabled={hiddenByParent}
           title={hiddenSelf ? t('partsShow') : t('partsHide')}
-          aria-label={`${hiddenSelf ? t('partsShow') : t('partsHide')}: ${part.name}`}
+          label={`${hiddenSelf ? t('partsShow') : t('partsHide')}: ${part.name}`}
+          icon={hiddenSelf ? <EyeOffIcon width={18} height={18} /> : <EyeIcon width={18} height={18} />}
           onClick={() => toggleHidden(part.id)}
-        >
-          {hiddenSelf ? <EyeOffIcon width={18} height={18} /> : <EyeIcon width={18} height={18} />}
-        </button>
+        />
       </li>
       {open &&
         part.children.map((child) => (

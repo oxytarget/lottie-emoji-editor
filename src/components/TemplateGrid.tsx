@@ -52,7 +52,7 @@ export function TemplateGrid({ emojis }: { emojis: CompiledEmoji[] }) {
         </span>
       </div>
       <div className="tile-grid">
-        {emojis.map((e) => {
+        {emojis.map((e, i) => {
           const isSelected = selected.includes(e.id);
           const name = emojiName(e.name, lang);
           return (
@@ -62,6 +62,7 @@ export function TemplateGrid({ emojis }: { emojis: CompiledEmoji[] }) {
               className={`tile${isSelected ? ' is-selected' : ''}${active === e.id ? ' is-active' : ''}`}
               aria-pressed={isSelected}
               aria-label={name}
+              style={{ '--i': Math.min(i, 24) } as React.CSSProperties}
               onClick={() => {
                 toggle(e.id);
                 haptic();
@@ -80,7 +81,12 @@ export function TemplateGrid({ emojis }: { emojis: CompiledEmoji[] }) {
             </button>
           );
         })}
-        <button type="button" className="tile tile-import" onClick={() => fileRef.current?.click()}>
+        <button
+          type="button"
+          className="tile tile-import"
+          style={{ '--i': Math.min(emojis.length, 24) } as React.CSSProperties}
+          onClick={() => fileRef.current?.click()}
+        >
           <PlusIcon width={30} height={30} />
           <span>{t('importLottie')}</span>
         </button>

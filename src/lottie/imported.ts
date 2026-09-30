@@ -1,5 +1,6 @@
 import { artToShapes, fitArt, type ArtStyle, type VectorArt } from '../content/art';
 import { hexToRgba, toHex } from './color';
+import { contentGroup } from './compose';
 import type { Layer, LottieAnimation } from './types';
 
 /**
@@ -99,6 +100,8 @@ export interface OverlayInput {
   artStyle: ArtStyle;
   scale: number;
   offsetY: number;
+  offsetX?: number;
+  rotation?: number;
 }
 
 /** Adds the user's content as the top-most layer, centred on the canvas. */
@@ -118,12 +121,12 @@ export function withOverlay(anim: LottieAnimation, overlay: OverlayInput): Lotti
     ks: {
       o: { a: 0, k: 100 },
       r: { a: 0, k: 0 },
-      p: { a: 0, k: [anim.w / 2, anim.h / 2 + overlay.offsetY * k, 0] },
+      p: { a: 0, k: [anim.w / 2 + (overlay.offsetX ?? 0) * k, anim.h / 2 + overlay.offsetY * k, 0] },
       a: { a: 0, k: [0, 0, 0] },
       s: { a: 0, k: [100, 100, 100] },
     },
     ao: 0,
-    shapes,
+    shapes: [contentGroup(shapes, overlay.rotation ?? 0)],
     ip: anim.ip,
     op: anim.op,
     st: 0,

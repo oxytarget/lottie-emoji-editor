@@ -4,8 +4,9 @@ import { MAX_SVG_BYTES, svgToArt, type SvgImportResult, type SvgWarning } from '
 import type { I18nKey } from '../i18n';
 import { useEditor } from '../state/store';
 import { useT } from '../state/useT';
-import { GradientTools, PaintSwatches, Segmented, Slider, Toggle } from './controls';
-import { ChevronIcon, DiceIcon, ImageIcon, SlidersIcon, TrashIcon, TypeIcon, UploadIcon, WarningIcon } from './icons';
+import { DiceButton, GradientTools, MotionButton, PaintSwatches, Segmented, Slider, Toggle } from './controls';
+import { usePresence } from './motion';
+import { ChevronIcon, ImageIcon, SlidersIcon, TrashIcon, TypeIcon, UploadIcon, WarningIcon } from './icons';
 
 const WARNING_KEYS: Record<SvgWarning, I18nKey> = {
   text: 'warnText',
@@ -28,6 +29,7 @@ function FontPicker() {
   const fontId = useEditor((s) => s.fontId);
   const set = useEditor((s) => s.set);
   const [open, setOpen] = useState(false);
+  const menu = usePresence(open, 180);
   const [error, setError] = useState(false);
   const [, forceUpdate] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -70,16 +72,16 @@ function FontPicker() {
         </span>
         <ChevronIcon width={20} height={20} className={open ? 'is-flipped' : ''} />
       </button>
-      {open && (
-        <div className="font-menu" role="listbox" aria-label={t('fontDefault')}>
-          {options.map((o) => (
+      {menu.mounted && (
+        <div className="font-menu" role="listbox" aria-label={t('fontDefault')} data-state={menu.state}>
+          {options.map((o, i) => (
             <button
               key={o.id}
               type="button"
               role="option"
               aria-selected={o.id === current.id}
               className={o.id === current.id ? 'is-active' : ''}
-              style={{ fontFamily: `${o.cssFamily}, inherit` }}
+              style={{ fontFamily: `${o.cssFamily}, inherit`, '--i': i } as React.CSSProperties}
               onClick={() => {
                 set('fontId', o.id);
                 setOpen(false);
@@ -111,7 +113,9 @@ function StyleSettings({ fill }: { fill: boolean }) {
         <span>{t('styleSettings')}</span>
         <ChevronIcon className={open ? 'is-flipped' : ''} />
       </button>
-      {open && (
+      {/* Always rendered: height animates via grid rows; `inert` keeps the closed body out of tab order. */}
+      <div className="collapsible-anim" inert={!open}>
+        <div className="collapsible-clip">
         <div className="collapsible-body">
           {fill && (
             <div className="paint-line">
@@ -146,7 +150,8 @@ function StyleSettings({ fill }: { fill: boolean }) {
             </>
           )}
         </div>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -168,9 +173,7 @@ function TextColors({ fill, outline }: { fill: boolean; outline: boolean }) {
           <span className="label">{t('outline')}</span>
         </div>
       )}
-      <button type="button" className="icon-btn is-accent" title={t('randomColors')} aria-label={t('randomColors')} onClick={s.randomizeText}>
-        <DiceIcon />
-      </button>
+      <DiceButton label={t('randomColors')} onRoll={s.randomizeText} />
     </div>
   );
 }
@@ -240,12 +243,10 @@ function LogoEditor({ result }: { result: SvgImportResult | null }) {
               </span>
             )}
             <div className="logo-actions">
-              <button type="button" className="pill-btn is-compact" onClick={() => fileRef.current?.click()}>
-                <UploadIcon width={18} height={18} /> {t('logoReplace')}
-              </button>
-              <button type="button" className="icon-btn is-small" aria-label={t('logoRemove')} title={t('logoRemove')} onClick={() => s.set('logo', null)}>
-                <TrashIcon width={18} height={18} />
-              </button>
+              <MotionButton motion="lift" className="pill-btn is-compact" icon={<UploadIcon width={18} height={18} />} label={t('logoReplace')} onClick={() => fileRef.current?.click()}>
+                {t('logoReplace')}
+              </MotionButton>
+              <MotionButton motion="wiggle" className="icon-btn is-small" icon={<TrashIcon width={18} height={18} />} label={t('logoRemove')} onClick={() => s.set('logo', null)} />
             </div>
           </div>
         </div>

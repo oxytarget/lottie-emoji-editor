@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { luminance, shade } from '../lottie/color';
 import { primaryColor, type Paint } from '../lottie/paint';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
-import { CloseIcon, GradientIcon, RadialIcon, RotateIcon, SwapIcon } from './icons';
+import { CloseIcon, DiceIcon, GradientIcon, RadialIcon, RotateIcon, SwapIcon } from './icons';
+import { AnimIcon, useReplay, useSlidingIndicator, type IconMotion } from './motion';
 
 export function Slider(props: {
   label: string;
@@ -39,19 +40,24 @@ export function Slider(props: {
   );
 }
 
+/** Tabs with a pill that slides to the active option. */
 export function Segmented<T extends string>(props: {
   value: T;
   options: Array<{ value: T; label: ReactNode }>;
   onChange: (v: T) => void;
   label?: string;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const pill = useSlidingIndicator(ref, props.value);
   return (
-    <div className="segmented" role="tablist" aria-label={props.label}>
+    <div className="segmented" role="tablist" aria-label={props.label} ref={ref}>
+      <span className="slide-pill" style={pill} aria-hidden />
       {props.options.map((o) => (
         <button
           key={o.value}
           type="button"
           role="tab"
+          data-slide-key={o.value}
           aria-selected={props.value === o.value}
           className={props.value === o.value ? 'is-active' : ''}
           onClick={() => props.onChange(o.value)}
@@ -70,6 +76,71 @@ export function Toggle(props: { checked: boolean; onChange: (v: boolean) => void
       <input type="checkbox" role="switch" checked={props.checked} onChange={(e) => props.onChange(e.target.checked)} />
       <span className="toggle-track" aria-hidden />
     </label>
+  );
+}
+
+/** Icon button whose icon plays a small animation on every click. */
+export function MotionButton(props: {
+  motion: IconMotion;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  className?: string;
+  children?: ReactNode;
+  pressed?: boolean;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const [play, replay] = useReplay();
+  return (
+    <button
+      type="button"
+      className={props.className ?? 'icon-btn'}
+      aria-label={props.children ? undefined : props.label}
+      aria-pressed={props.pressed}
+      title={props.title ?? props.label}
+      disabled={props.disabled}
+      onClick={() => {
+        replay();
+        props.onClick();
+      }}
+    >
+      <AnimIcon motion={props.motion} play={play}>
+        {props.icon}
+      </AnimIcon>
+      {props.children}
+    </button>
+  );
+}
+
+/** Die that really rolls: it tumbles and flicks through faces before landing on a random one. */
+export function DiceButton({ onRoll, label, className = 'icon-btn is-accent' }: { onRoll: () => void; label: string; className?: string }) {
+  const [face, setFace] = useState(5);
+  const [play, replay] = useReplay();
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearInterval(timer.current), []);
+
+  const roll = () => {
+    onRoll();
+    replay();
+    window.clearInterval(timer.current);
+    let flips = 0;
+    timer.current = window.setInterval(() => {
+      setFace((f) => {
+        let next = 1 + Math.floor(Math.random() * 6);
+        if (next === f) next = (next % 6) + 1;
+        return next;
+      });
+      if (++flips >= 6) window.clearInterval(timer.current);
+    }, 75);
+  };
+
+  return (
+    <button type="button" className={className} title={label} aria-label={label} onClick={roll}>
+      <AnimIcon motion="roll" play={play}>
+        <DiceIcon face={face} />
+      </AnimIcon>
+    </button>
   );
 }
 
@@ -98,42 +169,51 @@ export function GradientTools({ paint, onChange, compact }: { paint: Paint; onCh
   const t = useT();
   if (paint.type === 'solid') {
     return (
-      <button type="button" className={`pill-btn${compact ? ' is-compact' : ''}`} onClick={() => onChange(toGradient(paint))}>
-        <GradientIcon width={20} height={20} />
+      <MotionButton
+        motion="pop"
+        className={`pill-btn${compact ? ' is-compact' : ''}`}
+        icon={<GradientIcon width={20} height={20} />}
+        label={t('makeGradient')}
+        onClick={() => onChange(toGradient(paint))}
+      >
         <span>{t('makeGradient')}</span>
-      </button>
+      </MotionButton>
     );
   }
   return (
     <span className="gradient-tools">
       {paint.type === 'linear' ? (
-        <button type="button" className="icon-btn is-small" title={t('rotateGradient')} aria-label={t('rotateGradient')} onClick={() => onChange({ ...paint, angle: (paint.angle + 45) % 360 })}>
-          <RotateIcon width={18} height={18} />
-        </button>
-      ) : (
-        <button
-          type="button"
+        <MotionButton
+          motion="spin"
           className="icon-btn is-small"
-          title={t('swapColors')}
-          aria-label={t('swapColors')}
+          icon={<RotateIcon width={18} height={18} />}
+          label={t('rotateGradient')}
+          onClick={() => onChange({ ...paint, angle: (paint.angle + 45) % 360 })}
+        />
+      ) : (
+        <MotionButton
+          motion="flip"
+          className="icon-btn is-small"
+          icon={<SwapIcon width={18} height={18} />}
+          label={t('swapColors')}
           onClick={() => onChange({ ...paint, colors: [paint.colors[1], paint.colors[0]] })}
-        >
-          <SwapIcon width={18} height={18} />
-        </button>
+        />
       )}
-      <button
-        type="button"
+      <MotionButton
+        motion="pulse"
         className={`icon-btn is-small${paint.type === 'radial' ? ' is-accent' : ''}`}
-        title={t('radialGradient')}
-        aria-label={t('radialGradient')}
-        aria-pressed={paint.type === 'radial'}
+        icon={<RadialIcon width={18} height={18} />}
+        label={t('radialGradient')}
+        pressed={paint.type === 'radial'}
         onClick={() => onChange(paint.type === 'radial' ? { type: 'linear', colors: paint.colors, angle: 90 } : { type: 'radial', colors: paint.colors })}
-      >
-        <RadialIcon width={18} height={18} />
-      </button>
-      <button type="button" className="icon-btn is-small" title={t('removeGradient')} aria-label={t('removeGradient')} onClick={() => onChange({ type: 'solid', color: primaryColor(paint) })}>
-        <CloseIcon width={18} height={18} />
-      </button>
+      />
+      <MotionButton
+        motion="spin"
+        className="icon-btn is-small"
+        icon={<CloseIcon width={18} height={18} />}
+        label={t('removeGradient')}
+        onClick={() => onChange({ type: 'solid', color: primaryColor(paint) })}
+      />
     </span>
   );
 }

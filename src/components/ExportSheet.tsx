@@ -6,7 +6,7 @@ import { downloadBlob, formatKb, slug, tgsFromJson, zipFiles, type TgsCheck } fr
 import { useEditor } from '../state/store';
 import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
-import { Segmented } from './controls';
+import { MotionButton, Segmented } from './controls';
 import { CheckIcon, CloseIcon, DownloadIcon, SendIcon, SparkleIcon, WarningIcon } from './icons';
 import { LottieView } from './LottieView';
 import { emojiName } from './TemplateGrid';
@@ -41,7 +41,7 @@ type Result =
   | { kind: 'sent' }
   | { kind: 'error'; error: BotError; detail?: string };
 
-export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onClose: () => void }) {
+export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: CompiledEmoji[]; onClose: () => void; state?: 'open' | 'closed' }) {
   const t = useT();
   const lang = useEditor((s) => s.lang);
   const mode = useEditor((s) => s.mode);
@@ -117,13 +117,11 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
   };
 
   return (
-    <div className="sheet-backdrop" onClick={onClose}>
+    <div className="sheet-backdrop" onClick={onClose} data-state={state}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={t('exportTitle')} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <h2>{t('exportTitle')}</h2>
-          <button type="button" className="icon-btn is-round" aria-label={t('close')} onClick={onClose}>
-            <CloseIcon />
-          </button>
+          <MotionButton motion="spin" className="icon-btn is-round" label={t('close')} icon={<CloseIcon />} onClick={onClose} />
         </div>
 
         {!viaBot && (

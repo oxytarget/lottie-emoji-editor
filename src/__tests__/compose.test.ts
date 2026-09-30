@@ -80,6 +80,15 @@ describe('templates', () => {
     expect(anim.layers.some((l: Layer) => l.nm === 'content')).toBe(false);
   });
 
+  it('moves and rotates the content group for canvas edits', () => {
+    const anim = compose({ ...base(), offsetX: 25, rotation: 30 });
+    const layer = anim.layers.find((l) => l.nm === 'content')!;
+    expect((layer.ks.p as { k: number[] }).k[0]).toBe(25);
+    const wrapper = layer.shapes![0] as unknown as { cl: string; it: { ty: string; r?: { k: number } }[] };
+    expect(wrapper.cl).toBe('emoji-content');
+    expect(wrapper.it[wrapper.it.length - 1].r!.k).toBe(30);
+  });
+
   it('applies the height offset to the content layer', () => {
     const a = compose(base());
     const b = compose({ ...base(), offsetY: -30 });
@@ -128,6 +137,8 @@ describe('compileAll', () => {
       outlineWidth: 12,
       scale: 1,
       offsetY: 0,
+      offsetX: 0,
+      rotation: 0,
       imports: [{ id: 'import-x', data: imported, colorMap: { '#7c3aed': '#ff0000' }, overlay: true, hidden: [], replace: null }],
     });
     expect(out.map((o) => o.id)).toEqual([...BUILTIN_TEMPLATES.map((t) => t.id), 'import-x']);

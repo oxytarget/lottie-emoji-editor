@@ -49,6 +49,8 @@ export interface EditorData {
   outlineWidth: number;
   scale: number;
   offsetY: number;
+  offsetX: number;
+  rotation: number;
   selected: string[];
   active: string;
   previewBg: PreviewBg;
@@ -59,6 +61,8 @@ export interface EditorData {
 export interface EditorActions {
   set<K extends keyof EditorData>(key: K, value: EditorData[K]): void;
   setColor(role: ColorRole, paint: Paint): void;
+  /** Position/size/rotation of the text/logo (edited on the canvas). */
+  setTransform(xf: { scale: number; offsetX: number; offsetY: number; rotation: number }): void;
   applyPreset(preset: ColorPreset): void;
   randomizeEmoji(): void;
   randomizeText(): void;
@@ -91,6 +95,8 @@ export const initialData = (): EditorData => ({
   outlineWidth: 12,
   scale: 1,
   offsetY: 0,
+  offsetX: 0,
+  rotation: 0,
   selected: ['classic'],
   active: 'classic',
   previewBg: 'light',
@@ -106,6 +112,7 @@ export const useEditor = create<EditorData & EditorActions>()(
     (set, get) => ({
       ...initialData(),
       set: (key, value) => set({ [key]: value } as Partial<EditorData>),
+      setTransform: ({ scale, offsetX, offsetY, rotation }) => set({ scale, offsetX, offsetY, rotation }),
       setColor: (role, paint) => set({ colors: { ...get().colors, [role]: paint }, presetId: null }),
       applyPreset: (preset) =>
         set({ colors: preset.colors, textFill: preset.textFill, textOutline: preset.textOutline, presetId: preset.id }),
