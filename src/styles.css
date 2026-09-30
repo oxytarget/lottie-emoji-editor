@@ -775,7 +775,14 @@ div.note p + p {
     width: auto;
   }
   .popover-grid {
-    grid-template-columns: repeat(9, 1fr);
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .popover-grid .swatch-sm {
+    width: 100%;
+    max-width: 28px;
+    height: auto;
+    aspect-ratio: 1;
   }
 }
 
@@ -2055,6 +2062,232 @@ div.note p + p {
 
 .part-controls .slider-grid {
   width: 100%;
+}
+
+/* Favourites */
+.popover-favs {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.popover-favs .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warn);
+}
+
+.hex-field {
+  min-width: 0;
+}
+
+.hex-field input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+}
+
+.fav-star {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s, transform 0.18s var(--spring, ease);
+}
+
+.fav-star.is-on {
+  color: #f59e0b;
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, var(--card));
+}
+
+.fav-star.is-on svg {
+  animation: icon-twinkle 0.5s var(--ease-out, ease);
+}
+
+.fav-star:active {
+  transform: scale(0.9);
+}
+
+.fav-logos {
+  display: grid;
+  gap: 8px;
+}
+
+.fav-logos > .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fav-logos > .label svg {
+  color: #f59e0b;
+}
+
+.fav-logos .hint {
+  margin: 0;
+}
+
+.fav-logo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.fav-logo {
+  position: relative;
+  min-width: 0;
+  animation: item-in 0.26s var(--ease-out, ease) backwards;
+  animation-delay: calc(var(--i, 0) * 20ms);
+}
+
+.fav-logo-main {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  width: 100%;
+  padding: 8px 6px 6px;
+  border-radius: 14px;
+  background: repeating-conic-gradient(var(--sub-2) 0 25%, var(--card) 0 50%) 0 0 / 12px 12px;
+  border: 2px solid var(--line);
+  transition: border-color 0.2s, transform 0.18s var(--spring, ease);
+}
+
+.fav-logo-main img {
+  width: 100%;
+  height: 48px;
+  object-fit: contain;
+}
+
+.fav-logo-main span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.fav-logo.is-active .fav-logo-main {
+  border-color: var(--accent);
+}
+
+.fav-logo-main:active {
+  transform: scale(0.95);
+}
+
+.fav-logo-remove,
+.preset-remove {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--muted);
+  box-shadow: var(--shadow-sm);
+}
+
+.fav-logo-remove {
+  top: -6px;
+  right: -6px;
+}
+
+.fav-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ok);
+  animation: note-in 0.3s var(--ease-out, ease);
+}
+
+/* User presets */
+.preset-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.preset.is-user {
+  padding-right: 36px;
+}
+
+.preset-remove {
+  top: 50%;
+  right: 8px;
+  margin-top: -11px;
+}
+
+.preset-logo {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
+}
+
+.preset-logo img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.preset-text {
+  font-style: normal;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--muted);
+}
+
+.preset.is-add {
+  gap: 6px;
+  color: var(--accent);
+  border: 2px dashed var(--accent-line);
+  background: transparent;
+}
+
+.preset.is-add.is-active {
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+.preset-form-wrap {
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  transform-origin: 50% 0;
+  animation: menu-in 0.22s var(--ease-out, ease);
+}
+
+.preset-form-wrap[data-state='closed'] {
+  animation: menu-out 0.18s ease forwards;
+}
+
+.preset-form {
+  display: grid;
+  gap: 10px;
+}
+
+.preset-form .hint {
+  margin: 0;
 }
 
 /* "Edit all selected together" */

@@ -6,7 +6,7 @@ import { useEditor } from '../state/store';
 import { useT } from '../state/useT';
 import { DiceButton, GradientTools, MotionButton, PaintSwatches, Segmented, Slider, Toggle } from './controls';
 import { usePresence } from './motion';
-import { ChevronIcon, ImageIcon, SlidersIcon, TrashIcon, TypeIcon, UploadIcon, WarningIcon } from './icons';
+import { ChevronIcon, CloseIcon, ImageIcon, SlidersIcon, StarIcon, TrashIcon, TypeIcon, UploadIcon, WarningIcon } from './icons';
 
 const WARNING_KEYS: Record<SvgWarning, I18nKey> = {
   text: 'warnText',
@@ -207,6 +207,41 @@ function TextEditor({ missing, fontLoading }: { missing: string[]; fontLoading: 
   );
 }
 
+const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+/** Saved logos: tap to use (previews are <img>, so nothing inside an SVG can run). */
+function FavLogos() {
+  const t = useT();
+  const favs = useEditor((s) => s.favLogos);
+  const logo = useEditor((s) => s.logo);
+  const useLogo = useEditor((s) => s.useLogo);
+  const remove = useEditor((s) => s.removeFavLogo);
+  return (
+    <div className="fav-logos">
+      <span className="label">
+        <StarIcon width={14} height={14} filled /> {t('favorites')}
+      </span>
+      {favs.length === 0 ? (
+        <p className="hint">{t('favLogosEmpty')}</p>
+      ) : (
+        <div className="fav-logo-grid">
+          {favs.map((f, i) => (
+            <div key={f.id} className={`fav-logo${logo?.svg === f.svg ? ' is-active' : ''}`} style={{ '--i': i } as React.CSSProperties}>
+              <button type="button" className="fav-logo-main" title={f.name} aria-label={`${t('favLogoUse')}: ${f.name}`} onClick={() => useLogo(f)}>
+                <img src={svgUrl(f.svg)} alt="" />
+                <span>{f.name}</span>
+              </button>
+              <button type="button" className="fav-logo-remove" aria-label={`${t('favLogoRemove')}: ${f.name}`} title={t('favLogoRemove')} onClick={() => remove(f.id)}>
+                <CloseIcon width={12} height={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LogoEditor({ result }: { result: SvgImportResult | null }) {
   const t = useT();
   const s = useEditor();
@@ -214,9 +249,10 @@ function LogoEditor({ result }: { result: SvgImportResult | null }) {
   const [drag, setDrag] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Preview through <img> so scripts inside the SVG can never run.
-  const previewUrl = useMemo(() => (s.logo ? URL.createObjectURL(new Blob([s.logo.svg], { type: 'image/svg+xml' })) : null), [s.logo]);
-  useEffect(() => () => void (previewUrl && URL.revokeObjectURL(previewUrl)), [previewUrl]);
+  const favLogo = s.logo ? s.favLogos.find((f) => f.svg === s.logo!.svg) : undefined;
+
+  // Preview through <img> so scripts inside the SVG can never run (a data URL: nothing to revoke mid-load).
+  const previewUrl = useMemo(() => (s.logo ? svgUrl(s.logo.svg) : null), [s.logo]);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -246,6 +282,17 @@ function LogoEditor({ result }: { result: SvgImportResult | null }) {
               <MotionButton motion="lift" className="pill-btn is-compact" icon={<UploadIcon width={18} height={18} />} label={t('logoReplace')} onClick={() => fileRef.current?.click()}>
                 {t('logoReplace')}
               </MotionButton>
+              <MotionButton
+                motion="twinkle"
+                className={`icon-btn is-small${favLogo ? ' is-accent' : ''}`}
+                icon={<StarIcon width={18} height={18} filled={!!favLogo} />}
+                label={favLogo ? t('favLogoRemove') : t('favLogoAdd')}
+                pressed={!!favLogo}
+                onClick={() => {
+                  if (favLogo) return s.removeFavLogo(favLogo.id);
+                  if (!s.addFavLogo({ name: s.logo!.name.replace(/\.svg$/i, ''), svg: s.logo!.svg })) setError('favLogoTooBig');
+                }}
+              />
               <MotionButton motion="wiggle" className="icon-btn is-small" icon={<TrashIcon width={18} height={18} />} label={t('logoRemove')} onClick={() => s.set('logo', null)} />
             </div>
           </div>
@@ -282,6 +329,7 @@ function LogoEditor({ result }: { result: SvgImportResult | null }) {
         }}
       />
       {error && <p className="note is-error">{t(error)}</p>}
+      <FavLogos />
       {result?.warnings.map((w) => (
         <p key={w} className="note is-warn">
           <WarningIcon width={16} height={16} /> {t(WARNING_KEYS[w])}

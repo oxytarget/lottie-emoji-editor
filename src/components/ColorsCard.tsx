@@ -1,13 +1,14 @@
+import { useState } from 'react';
+import type { I18nKey } from '../i18n';
+import { haptic } from '../lib/telegram';
 import { paintCss } from '../lottie/paint';
 import { PRESETS } from '../state/presets';
-import { useEditor } from '../state/store';
+import { useEditor, type UserPreset } from '../state/store';
 import { useT } from '../state/useT';
 import type { ColorRole } from '../templates/types';
-import { GradientTools, PaintSwatches, Slider } from './controls';
-import { AnimIcon } from './motion';
-import { useState } from 'react';
-import { DiceButton } from './controls';
-import type { I18nKey } from '../i18n';
+import { DiceButton, GradientTools, PaintSwatches, Slider, Toggle } from './controls';
+import { CloseIcon, PlusIcon, StarIcon } from './icons';
+import { AnimIcon, usePresence } from './motion';
 
 const ROLES: Array<{ role: ColorRole; key: I18nKey }> = [
   { role: 'body', key: 'fill' },
@@ -15,11 +16,89 @@ const ROLES: Array<{ role: ColorRole; key: I18nKey }> = [
   { role: 'accent', key: 'accent' },
 ];
 
+const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+/** Saves the current colours as a preset, optionally with the current logo or text. */
+function PresetForm({ onDone }: { onDone: () => void }) {
+  const t = useT();
+  const mode = useEditor((s) => s.mode);
+  const logo = useEditor((s) => s.logo);
+  const text = useEditor((s) => s.text);
+  const count = useEditor((s) => s.userPresets.length);
+  const save = useEditor((s) => s.saveUserPreset);
+  const [name, setName] = useState('');
+  const contentName = mode === 'logo' ? logo?.name.replace(/\.svg$/i, '') : text.split('\n')[0].trim();
+  const [withContent, setWithContent] = useState(!!contentName);
+  const [full, setFull] = useState(false);
+  return (
+    <form
+      className="preset-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!save(name, withContent && !!contentName)) return setFull(true);
+        haptic();
+        onDone();
+      }}
+    >
+      <label className="field">
+        <span className="label">{t('presetName')}</span>
+        <input value={name} maxLength={32} autoFocus placeholder={`★ ${count + 1}`} onChange={(e) => setName(e.target.value)} />
+      </label>
+      {contentName && (
+        <Toggle
+          label={t(mode === 'logo' ? 'presetWithLogo' : 'presetWithText').replace('{name}', contentName.slice(0, 24))}
+          checked={withContent}
+          onChange={setWithContent}
+        />
+      )}
+      <p className="hint">{t('presetHint')}</p>
+      {full && <p className="note is-error">{t('presetFull')}</p>}
+      <div className="row-actions">
+        <button type="submit" className="pill-btn is-accent">
+          <StarIcon width={16} height={16} /> {t('save')}
+        </button>
+        <button type="button" className="pill-btn" onClick={onDone}>
+          {t('cancel')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function UserPresetChip({ preset, active, onApply }: { preset: UserPreset; active: boolean; onApply: () => void }) {
+  const t = useT();
+  const remove = useEditor((s) => s.removeUserPreset);
+  const content = preset.content;
+  return (
+    <span className="preset-wrap" role="listitem">
+      <button type="button" className={`preset is-user${active ? ' is-active' : ''}`} onClick={onApply}>
+        {content?.mode === 'logo' ? (
+          <span className="preset-logo" style={{ background: paintCss(preset.colors.body) }} aria-hidden>
+            <img src={svgUrl(content.logo.svg)} alt="" />
+          </span>
+        ) : (
+          <span className="preset-dots" aria-hidden>
+            <span style={{ background: paintCss(preset.colors.body) }} />
+            <span style={{ background: paintCss(preset.colors.accent) }} />
+          </span>
+        )}
+        {preset.name}
+        {content?.mode === 'text' && <em className="preset-text">{content.text.split('\n')[0].slice(0, 10)}</em>}
+      </button>
+      <button type="button" className="preset-remove" aria-label={`${t('presetRemove')}: ${preset.name}`} title={t('presetRemove')} onClick={() => remove(preset.id)}>
+        <CloseIcon width={12} height={12} />
+      </button>
+    </span>
+  );
+}
+
 export function ColorsCard() {
   const t = useT();
   const s = useEditor();
   // Replays the dots animation of the preset that was just picked.
   const [spin, setSpin] = useState<{ id: string; n: number }>({ id: '', n: 0 });
+  const [presetForm, setPresetForm] = useState(false);
+  const form = usePresence(presetForm, 200);
   return (
     <section className="card">
       <h3 className="section-title">{t('presets')}</h3>
@@ -44,7 +123,19 @@ export function ColorsCard() {
             {p.name}
           </button>
         ))}
+        {s.userPresets.map((p) => (
+          <UserPresetChip key={p.id} preset={p} active={s.presetId === p.id} onApply={() => s.applyUserPreset(p)} />
+        ))}
+        <button type="button" role="listitem" className={`preset is-add${presetForm ? ' is-active' : ''}`} aria-expanded={presetForm} onClick={() => setPresetForm((v) => !v)}>
+          <PlusIcon width={18} height={18} />
+          {t('presetSave')}
+        </button>
       </div>
+      {form.mounted && (
+        <div className="preset-form-wrap" data-state={form.state}>
+          <PresetForm onDone={() => setPresetForm(false)} />
+        </div>
+      )}
 
       <div className="subcard">
         <div className="subcard-head">

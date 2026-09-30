@@ -235,3 +235,35 @@ describe('editing all selected stickers together', () => {
     expect(matchColors(['#ffd400', '#ffd502', '#000000'], '#ffd401')).toEqual(['#ffd400', '#ffd502']);
   });
 });
+
+describe('parts as SVG logos', () => {
+  it('turns the text of a sticker into an SVG logo the editor can import', async () => {
+    const { svgToArt } = await import('../content/svg');
+    const { partSvg } = await import('../lottie/parts');
+    const sticker = generatedPack()[0];
+    const content = flattenParts(listParts(sticker)).find((p) => p.name === 'content')!;
+    const svg = partSvg(sticker, content.id)!;
+    expect(svg.startsWith('<svg')).toBe(true);
+    expect(svg).toContain('fill="#ffffff"');
+    expect(svg).toContain('stroke="#000000"');
+    const res = svgToArt(svg);
+    expect(res.error).toBeUndefined();
+    expect(res.stats.items).toBeGreaterThan(1);
+  });
+
+  it('keeps gradients, ellipses and rectangles, skips text layers', async () => {
+    const { svgToArt } = await import('../content/svg');
+    const { partSvg } = await import('../lottie/parts');
+    const gradient = { ty: 'gf', t: 1, o: st(100), r: 1, s: st([-50, 0]), e: st([50, 0]), g: { p: 2, k: st([0, 1, 0, 0, 1, 0, 0, 1]) } };
+    const a = anim([
+      layer(1, 'Badge', [{ ty: 'gr', nm: 'G', it: [{ ty: 'el', p: st([0, 0]), s: st([100, 60]) }, { ty: 'rc', p: st([0, 50]), s: st([80, 20]), r: st(6) }, gradient, tr()] }]),
+      { ...layer(2, 'Title', []), ty: 5, t: { d: { k: [{ s: { s: 40, t: 'HI' }, t: 0 }] } } } as Layer,
+    ]);
+    const svg = partSvg(a, 'l0')!;
+    expect(svg).toContain('<linearGradient');
+    expect(svg).toContain('stop-color="#ff0000"');
+    expect(svg).toContain('stop-color="#0000ff"');
+    expect(svgToArt(svg).error).toBeUndefined();
+    expect(partSvg(a, 'l1')).toBeNull();
+  });
+});

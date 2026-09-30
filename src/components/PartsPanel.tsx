@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { I18nKey } from '../i18n';
 import { recolor } from '../lottie/imported';
-import { flattenParts, isIdentityXf, isolatePart, listParts, NO_XF, partFrame, type Part, type PartKind, type PartXf } from '../lottie/parts';
+import { flattenParts, isIdentityXf, isolatePart, listParts, NO_XF, partFrame, partSvg, type Part, type PartKind, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
 import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, ReplaceIcon, ResetIcon, WarningIcon } from './icons';
+import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, ReplaceIcon, ResetIcon, StarIcon, WarningIcon } from './icons';
 import { MotionButton, Slider } from './controls';
 import { LottieView, useInView } from './LottieView';
 
@@ -41,8 +41,66 @@ function PartThumb({ anim, id }: { anim: LottieAnimation; id: string }) {
   );
 }
 
+/** Colours used by an SVG (fills, strokes, gradient stops). */
+const svgColors = (svg: string) => [...new Set([...svg.matchAll(/(?:fill|stroke|stop-color)="(#[0-9a-f]{6})"/gi)].map((m) => m[1].toLowerCase()))];
+
+type FavStatus = { kind: 'logo'; logo: { name: string; svg: string } } | { kind: 'colors'; n: number } | { kind: 'fail' | 'too-big' } | null;
+
+/** Keep a part as a logo (SVG) or its colours in Favourites. */
+function PartFavorites({ anim, part }: { anim: LottieAnimation; part: Part }) {
+  const t = useT();
+  const addFavLogo = useEditor((s) => s.addFavLogo);
+  const addFavColors = useEditor((s) => s.addFavColors);
+  const useLogo = useEditor((s) => s.useLogo);
+  const [status, setStatus] = useState<FavStatus>(null);
+  useEffect(() => setStatus(null), [part.id]);
+
+  const saveLogo = () => {
+    const svg = partSvg(anim, part.id);
+    if (!svg) return setStatus({ kind: 'fail' });
+    const logo = addFavLogo({ name: part.name, svg });
+    setStatus(logo ? { kind: 'logo', logo } : { kind: 'too-big' });
+  };
+  const saveColors = () => {
+    const svg = partSvg(anim, part.id);
+    if (!svg) return setStatus({ kind: 'fail' });
+    setStatus({ kind: 'colors', n: addFavColors(svgColors(svg)) });
+  };
+
+  return (
+    <>
+      <div className="row-actions">
+        <MotionButton motion="twinkle" className="pill-btn is-compact" icon={<StarIcon width={16} height={16} />} label={t('favLogoAdd')} onClick={saveLogo}>
+          {t('favLogoAdd')}
+        </MotionButton>
+        <MotionButton motion="twinkle" className="pill-btn is-compact" icon={<StarIcon width={16} height={16} />} label={t('favPartColors')} onClick={saveColors}>
+          {t('favPartColors')}
+        </MotionButton>
+      </div>
+      {status?.kind === 'logo' && (
+        <div className="fav-status" role="status">
+          <CheckIcon width={14} height={14} strokeWidth={3} /> <span>{t('favLogoSaved')}</span>
+          <button type="button" className="link-btn" onClick={() => useLogo(status.logo)}>
+            {t('favLogoUse')}
+          </button>
+        </div>
+      )}
+      {status?.kind === 'colors' && (
+        <p className="fav-status" role="status">
+          <CheckIcon width={14} height={14} strokeWidth={3} /> {t('favColorsAdded').replace('{n}', String(status.n))}
+        </p>
+      )}
+      {(status?.kind === 'fail' || status?.kind === 'too-big') && (
+        <p className="note is-warn">
+          <WarningIcon width={16} height={16} /> {t(status.kind === 'fail' ? 'favLogoFail' : 'favLogoTooBig')}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** Sliders for a grabbed part — the same move/size/rotation as dragging it on the canvas. */
-function PartControls({ imp, part }: { imp: ImportedTemplate; part: Part }) {
+function PartControls({ imp, part, anim }: { imp: ImportedTemplate; part: Part; anim: LottieAnimation }) {
   const t = useT();
   const xf = imp.transforms[part.id] ?? NO_XF;
   const set = (patch: Partial<PartXf>) => editImport(imp.id, { kind: 'transform', part: part.id, xf: { ...xf, ...patch } });
@@ -78,6 +136,7 @@ function PartControls({ imp, part }: { imp: ImportedTemplate; part: Part }) {
           {t('canvasReset')}
         </MotionButton>
       )}
+      <PartFavorites anim={anim} part={part} />
     </li>
   );
 }
@@ -159,7 +218,7 @@ function PartRow(props: RowProps) {
           onClick={() => toggleHidden(part.id)}
         />
       </li>
-      {isGrabbed && <PartControls imp={imp} part={part} />}
+      {isGrabbed && <PartControls imp={imp} part={part} anim={anim} />}
       {open && part.children.map((child) => <PartRow key={child.id} {...props} part={child} depth={depth + 1} />)}
     </>
   );

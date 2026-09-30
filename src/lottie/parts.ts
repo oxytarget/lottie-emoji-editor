@@ -1,5 +1,6 @@
 import { artToShapes, fitArt, type ArtStyle, type VectorArt } from '../content/art';
-import { applyMatrix, contoursBBox, IDENTITY, invert, multiply, rotateMatrix, type Contour } from './bezier';
+import { applyMatrix, contoursBBox, IDENTITY, invert, matrixScale, multiply, rotateMatrix, type Contour } from './bezier';
+import { toHex } from './color';
 import { contentGroup } from './compose';
 import { shapeTransform } from './shapes';
 import type { BBox, Bezier, Layer, LottieAnimation, Matrix, ShapeItem } from './types';
@@ -785,4 +786,229 @@ export function partFrame(anim: LottieAnimation, id: string): number {
     }
   }
   return Math.round(best) - anim.ip;
+}
+
+// ---------------------------------------------------------------------------
+// A part as an SVG logo (to keep it in Favourites and use it in other emoji)
+// ---------------------------------------------------------------------------
+
+type Paint = { kind: 'solid'; color: string } | { kind: 'gradient'; id: string };
+interface SvgCtx {
+  t: number;
+  defs: string[];
+  out: string[];
+  box: { x0: number; y0: number; x1: number; y1: number };
+}
+
+const fmt = (n: number) => String(Math.round(n * 100) / 100);
+const K = 0.5522847498;
+
+function grow(ctx: SvgCtx, x: number, y: number, pad = 0): void {
+  ctx.box.x0 = Math.min(ctx.box.x0, x - pad);
+  ctx.box.y0 = Math.min(ctx.box.y0, y - pad);
+  ctx.box.x1 = Math.max(ctx.box.x1, x + pad);
+  ctx.box.y1 = Math.max(ctx.box.y1, y + pad);
+}
+
+/** Closed contour through cubic segments given in local coordinates. */
+function localContour(start: [number, number], segs: number[][], m: Matrix): Contour {
+  const pt = (x: number, y: number) => applyMatrix(m, x, y);
+  return {
+    closed: true,
+    start: pt(start[0], start[1]),
+    segs: segs.map(([a, b, c, d, e, f]) => {
+      const p1 = pt(a, b);
+      const p2 = pt(c, d);
+      const p3 = pt(e, f);
+      return [p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]] as Contour['segs'][number];
+    }),
+  };
+}
+
+function ellipseContour(cx: number, cy: number, rx: number, ry: number, m: Matrix): Contour {
+  const kx = rx * K;
+  const ky = ry * K;
+  return localContour(
+    [cx, cy - ry],
+    [
+      [cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy],
+      [cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry],
+      [cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy],
+      [cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry],
+    ],
+    m,
+  );
+}
+
+function rectContour(cx: number, cy: number, w: number, h: number, radius: number, m: Matrix): Contour {
+  const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+  const [x0, y0, x1, y1] = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2];
+  const line = (x: number, y: number, x2: number, y2: number) => [x, y, x2, y2, x2, y2];
+  const k = r * K;
+  const pts = [
+    line(x0 + r, y0, x1 - r, y0),
+    [x1 - r + k, y0, x1, y0 + r - k, x1, y0 + r],
+    line(x1, y0 + r, x1, y1 - r),
+    [x1, y1 - r + k, x1 - r + k, y1, x1 - r, y1],
+    line(x1 - r, y1, x0 + r, y1),
+    [x0 + r - k, y1, x0, y1 - r + k, x0, y1 - r],
+    line(x0, y1 - r, x0, y0 + r),
+    [x0, y0 + r - k, x0 + r - k, y0, x0 + r, y0],
+  ];
+  return localContour([x0 + r, y0], r > 0 ? pts : pts.filter((_, i) => i % 2 === 0), m);
+}
+
+function starContour(it: ShapeItem, t: number, m: Matrix): Contour | null {
+  const n = Math.max(3, Math.round(num(valueAt(it.pt, t), 5)));
+  const [cx, cy] = vec(valueAt(it.p, t), [0, 0]);
+  const outer = num(valueAt(it.or, t), 0);
+  const inner = num(valueAt(it.ir, t), outer / 2);
+  const rot = num(valueAt(it.r, t), 0);
+  if (outer <= 0) return null;
+  const star = it.sy !== 2;
+  const count = star ? n * 2 : n;
+  const pts = Array.from({ length: count }, (_, i) => {
+    const a = ((rot - 90 + (i * 360) / count) * Math.PI) / 180;
+    const r = star && i % 2 ? inner : outer;
+    return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+  });
+  return localContour(
+    pts[0] as [number, number],
+    pts.map((_, i) => {
+      const [x, y] = pts[(i + 1) % pts.length];
+      return [x, y, x, y, x, y];
+    }),
+    m,
+  );
+}
+
+function shapeContour(it: ShapeItem, t: number, m: Matrix): Contour | null {
+  if (it.ty === 'sh') {
+    const b = valueAt<Bezier | Bezier[]>(it.ks, t);
+    const bez = Array.isArray(b) ? b[0] : b;
+    return bez ? bezierContour(bez, m) : null;
+  }
+  if (it.ty === 'el') {
+    const [cx, cy] = vec(valueAt(it.p, t), [0, 0]);
+    const [w, h] = vec(valueAt(it.s, t), [0, 0]);
+    return w > 0 && h > 0 ? ellipseContour(cx, cy, w / 2, h / 2, m) : null;
+  }
+  if (it.ty === 'rc') {
+    const [cx, cy] = vec(valueAt(it.p, t), [0, 0]);
+    const [w, h] = vec(valueAt(it.s, t), [0, 0]);
+    return w > 0 && h > 0 ? rectContour(cx, cy, w, h, num(valueAt(it.r, t), 0), m) : null;
+  }
+  if (it.ty === 'sr') return starContour(it, t, m);
+  return null;
+}
+
+function pathData(contours: readonly Contour[], ctx: SvgCtx, pad: number): string {
+  return contours
+    .map((c) => {
+      grow(ctx, c.start[0], c.start[1], pad);
+      let d = `M${fmt(c.start[0])} ${fmt(c.start[1])}`;
+      for (const s of c.segs) {
+        grow(ctx, s[0], s[1], pad);
+        grow(ctx, s[2], s[3], pad);
+        grow(ctx, s[4], s[5], pad);
+        d += `C${fmt(s[0])} ${fmt(s[1])} ${fmt(s[2])} ${fmt(s[3])} ${fmt(s[4])} ${fmt(s[5])}`;
+      }
+      return c.closed ? `${d}Z` : d;
+    })
+    .join('');
+}
+
+function gradientPaint(style: ShapeItem, m: Matrix, ctx: SvgCtx): Paint | null {
+  const g = style.g as { p?: number; k?: unknown } | undefined;
+  const stops = g?.p ?? 0;
+  const values = vec(valueAt(g?.k, ctx.t), []);
+  if (!stops || values.length < stops * 4) return null;
+  const id = `g${ctx.defs.length}`;
+  const [sx, sy] = applyMatrix(m, ...(vec(valueAt(style.s, ctx.t), [0, 0]).slice(0, 2) as [number, number]));
+  const [ex, ey] = applyMatrix(m, ...(vec(valueAt(style.e, ctx.t), [100, 0]).slice(0, 2) as [number, number]));
+  const stopTags = Array.from({ length: stops }, (_, i) => {
+    const [o, r, gg, b] = values.slice(i * 4, i * 4 + 4);
+    return `<stop offset="${fmt(o)}" stop-color="${toHex([r, gg, b])}"/>`;
+  }).join('');
+  ctx.defs.push(
+    style.t === 2
+      ? `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${fmt(sx)}" cy="${fmt(sy)}" r="${fmt(Math.hypot(ex - sx, ey - sy))}">${stopTags}</radialGradient>`
+      : `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${fmt(sx)}" y1="${fmt(sy)}" x2="${fmt(ex)}" y2="${fmt(ey)}">${stopTags}</linearGradient>`,
+  );
+  return { kind: 'gradient', id };
+}
+
+/** Shapes a style applies to: the items above it in its group, including nested groups (Lottie rules). */
+function collectShapes(items: readonly ShapeItem[], m: Matrix, t: number, out: Contour[]): void {
+  for (const it of items) {
+    if (it.ty === 'gr') {
+      const children = (it.it as ShapeItem[]) ?? [];
+      collectShapes(children, multiply(m, transformMatrix(children.find((c) => c.ty === 'tr') as Json | undefined, t)), t, out);
+    } else {
+      const c = shapeContour(it, t, m);
+      if (c) out.push(c);
+    }
+  }
+}
+
+/** Emits one SVG path per fill/stroke, bottom-most first (Lottie lists the top-most item first). */
+function renderItems(items: readonly ShapeItem[], m: Matrix, opacity: number, ctx: SvgCtx): void {
+  const tr = items.find((it) => it.ty === 'tr') as Json | undefined;
+  const local = multiply(m, transformMatrix(tr, ctx.t));
+  const alpha = opacity * (num(valueAt(tr?.o, ctx.t), 100) / 100);
+  if (alpha <= 0.001) return;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.ty === 'gr') {
+      renderItems((it.it as ShapeItem[]) ?? [], local, alpha, ctx);
+      continue;
+    }
+    if (!['fl', 'st', 'gf', 'gs'].includes(it.ty)) continue;
+    const contours: Contour[] = [];
+    collectShapes(items.slice(0, i), local, ctx.t, contours);
+    if (!contours.length) continue;
+    const o = alpha * (num(valueAt(it.o, ctx.t), 100) / 100);
+    const color = () => toHex(vec(valueAt(it.c, ctx.t), [0, 0, 0]));
+    const paint: Paint | null = it.ty === 'gf' || it.ty === 'gs' ? gradientPaint(it, local, ctx) : { kind: 'solid', color: color() };
+    if (!paint) continue;
+    const value = paint.kind === 'solid' ? paint.color : `url(#${paint.id})`;
+    if (it.ty === 'fl' || it.ty === 'gf') {
+      const rule = it.r === 2 ? ' fill-rule="evenodd"' : '';
+      ctx.out.push(`<path d="${pathData(contours, ctx, 0)}" fill="${value}"${o < 1 ? ` fill-opacity="${fmt(o)}"` : ''}${rule}/>`);
+    } else {
+      const width = num(valueAt(it.w, ctx.t), 1) * matrixScale(local);
+      if (width <= 0) continue;
+      ctx.out.push(
+        `<path d="${pathData(contours, ctx, width / 2)}" fill="none" stroke="${value}" stroke-width="${fmt(width)}" stroke-linejoin="round" stroke-linecap="round"${o < 1 ? ` stroke-opacity="${fmt(o)}"` : ''}/>`,
+      );
+    }
+  }
+}
+
+function renderLayer(layer: AnyLayer, assets: Map<string, Asset>, m: Matrix, ctx: SvgCtx, depth: number): void {
+  if (layer.td || layer.hd) return;
+  if (layer.ty === 4) renderItems((layer.shapes ?? []) as ShapeItem[], m, 1, ctx);
+  else if (layer.ty === 0 && depth < 5) {
+    const asset = layer.refId ? assets.get(layer.refId) : undefined;
+    const children = asset?.layers ?? [];
+    for (let i = children.length - 1; i >= 0; i--) renderLayer(children[i], assets, multiply(m, layerMatrix(children, children[i], ctx.t)), ctx, depth + 1);
+  }
+}
+
+/**
+ * The part drawn as a standalone SVG (its shapes, fills, strokes and gradients at the frame where it is best
+ * visible, without its own motion). Null when there is nothing drawable (text and image layers are skipped).
+ */
+export function partSvg(anim: LottieAnimation, id: string): string | null {
+  const target = resolve(anim, id);
+  if (!target) return null;
+  const ctx: SvgCtx = { t: partFrame(anim, id) + anim.ip, defs: [], out: [], box: { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity } };
+  if (target.type === 'group') renderItems((target.group.it as ShapeItem[]) ?? [], IDENTITY, 1, ctx);
+  else renderLayer({ ...target.layer, td: undefined }, assetsById(anim), IDENTITY, ctx, 0);
+  const { x0, y0, x1, y1 } = ctx.box;
+  if (!ctx.out.length || !(x1 > x0) || !(y1 > y0)) return null;
+  const pad = Math.max(x1 - x0, y1 - y0) * 0.02;
+  const view = [x0 - pad, y0 - pad, x1 - x0 + pad * 2, y1 - y0 + pad * 2].map(fmt).join(' ');
+  const defs = ctx.defs.length ? `<defs>${ctx.defs.join('')}</defs>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${view}">${defs}${ctx.out.join('')}</svg>`;
 }

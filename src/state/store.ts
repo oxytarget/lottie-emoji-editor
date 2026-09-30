@@ -34,6 +34,22 @@ export interface PackRef {
   title: string;
 }
 
+/** Logo kept in Favourites (an uploaded SVG or a part of an imported animation). */
+export interface FavLogo {
+  id: string;
+  name: string;
+  svg: string;
+}
+
+/** Colour preset made by the user, optionally with the text or logo — a ready-made look in one tap. */
+export interface UserPreset extends ColorPreset {
+  textOutlineWidth: number;
+  outlineWidth: number;
+  content?:
+    | { mode: 'logo'; logo: { name: string; svg: string }; logoColors: 'original' | 'paint'; logoOutline: boolean }
+    | { mode: 'text'; text: string; fontId: string };
+}
+
 /** User edits of a pack sticker, kept across sessions (the animation itself is not stored). */
 export type PackEdit = Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms'>;
 
@@ -78,6 +94,9 @@ export interface EditorData {
   packEdits: Record<string, PackEdit>;
   /** Edits of an imported animation are repeated on every other selected one. */
   syncImports: boolean;
+  favColors: string[];
+  favLogos: FavLogo[];
+  userPresets: UserPreset[];
 }
 
 export interface EditorActions {
@@ -103,6 +122,17 @@ export interface EditorActions {
   /** Puts a pack on top of "My packs" (title filled in once it loads). */
   rememberPack(pack: PackRef): void;
   savePack(pack: SavedPack): void;
+  toggleFavColor(hex: string): void;
+  addFavColors(hexes: readonly string[]): number;
+  /** Returns the saved logo, or null when it is too big to keep. */
+  addFavLogo(logo: { name: string; svg: string }): FavLogo | null;
+  removeFavLogo(id: string): void;
+  /** Makes a logo the current content (logo mode). */
+  useLogo(logo: { name: string; svg: string }): void;
+  /** Saves the current colours (and, with `withContent`, the current text or logo) as a preset. */
+  saveUserPreset(name: string, withContent: boolean): UserPreset | null;
+  removeUserPreset(id: string): void;
+  applyUserPreset(preset: UserPreset): void;
   reset(): void;
 }
 
@@ -137,7 +167,18 @@ export const initialData = (): EditorData => ({
   myPacks: [],
   packEdits: {},
   syncImports: false,
+  favColors: [],
+  favLogos: [],
+  userPresets: [],
 });
+
+/** Limits keep Favourites within the ~5 MB localStorage quota. */
+const MAX_FAV_COLORS = 30;
+const MAX_FAV_LOGOS = 30;
+const MAX_USER_PRESETS = 20;
+export const MAX_FAV_LOGO_CHARS = 300_000;
+
+const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 const isSessionOnly = (id: string) => id.startsWith('import-') || id.startsWith('pack:');
 
@@ -236,13 +277,76 @@ export const useEditor = create<EditorData & EditorActions>()(
         const others = get().packs.filter((p) => p.name !== pack.name);
         set({ packs: [pack, ...others].slice(0, 20) });
       },
-      // Packs live in Telegram, so a reset keeps the lists (pack stickers stay loaded, with their edits reset).
+      toggleFavColor: (hex) => {
+        const c = hex.toLowerCase();
+        const favs = get().favColors;
+        set({ favColors: favs.includes(c) ? favs.filter((f) => f !== c) : [c, ...favs].slice(0, MAX_FAV_COLORS) });
+      },
+      addFavColors: (hexes) => {
+        const favs = get().favColors;
+        const fresh = [...new Set(hexes.map((h) => h.toLowerCase()))].filter((h) => !favs.includes(h));
+        set({ favColors: [...fresh, ...favs].slice(0, MAX_FAV_COLORS) });
+        return fresh.length;
+      },
+      addFavLogo: ({ name, svg }) => {
+        if (svg.length > MAX_FAV_LOGO_CHARS) return null;
+        const favs = get().favLogos;
+        const known = favs.find((f) => f.svg === svg);
+        if (known) return known;
+        const logo = { id: newId('logo'), name: name.slice(0, 60) || 'Logo', svg };
+        set({ favLogos: [logo, ...favs].slice(0, MAX_FAV_LOGOS) });
+        return logo;
+      },
+      removeFavLogo: (id) => set({ favLogos: get().favLogos.filter((f) => f.id !== id) }),
+      useLogo: ({ name, svg }) => set({ logo: { name, svg }, mode: 'logo' }),
+      saveUserPreset: (name, withContent) => {
+        const s = get();
+        const content: UserPreset['content'] = !withContent
+          ? undefined
+          : s.mode === 'logo' && s.logo && s.logo.svg.length <= MAX_FAV_LOGO_CHARS
+            ? { mode: 'logo', logo: s.logo, logoColors: s.logoColors, logoOutline: s.logoOutline }
+            : s.mode === 'text' && s.text.trim()
+              ? { mode: 'text', text: s.text, fontId: s.fontId }
+              : undefined;
+        const preset: UserPreset = {
+          id: newId('user'),
+          name: name.trim().slice(0, 32) || `★ ${s.userPresets.length + 1}`,
+          colors: s.colors,
+          textFill: s.textFill,
+          textOutline: s.textOutline,
+          textOutlineWidth: s.textOutlineWidth,
+          outlineWidth: s.outlineWidth,
+          content,
+        };
+        if (s.userPresets.length >= MAX_USER_PRESETS) return null;
+        set({ userPresets: [...s.userPresets, preset], presetId: preset.id });
+        return preset;
+      },
+      removeUserPreset: (id) => {
+        const { userPresets, presetId } = get();
+        set({ userPresets: userPresets.filter((p) => p.id !== id), presetId: presetId === id ? null : presetId });
+      },
+      applyUserPreset: (p) => {
+        const content = p.content;
+        set({
+          colors: p.colors,
+          textFill: p.textFill,
+          textOutline: p.textOutline,
+          textOutlineWidth: p.textOutlineWidth,
+          outlineWidth: p.outlineWidth,
+          presetId: p.id,
+          ...(content?.mode === 'logo' ? { mode: 'logo' as const, logo: content.logo, logoColors: content.logoColors, logoOutline: content.logoOutline } : {}),
+          ...(content?.mode === 'text' ? { mode: 'text' as const, text: content.text, fontId: content.fontId } : {}),
+        });
+      },
+      // Packs live in Telegram and Favourites are the user's library, so a reset keeps them
+      // (pack stickers stay loaded, with their edits reset).
       reset: () => {
-        const { lang, packs, myPacks, imports } = get();
+        const { lang, packs, myPacks, imports, favColors, favLogos, userPresets } = get();
         const stickers = imports
           .filter((t) => t.source)
           .map((t) => ({ ...t, colorMap: {}, transforms: {}, ...(t.defaults ?? { hidden: [], replace: null, overlay: false }) }));
-        set({ ...initialData(), lang, packs, myPacks, imports: stickers });
+        set({ ...initialData(), lang, packs, myPacks, imports: stickers, favColors, favLogos, userPresets });
       },
     }),
     {

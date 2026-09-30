@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { normalizeHex } from '../lottie/color';
+import { useEditor } from '../state/store';
 import { useT } from '../state/useT';
+import { StarIcon } from './icons';
 import { usePresence } from './motion';
 
 const SWATCHES = [
@@ -23,6 +25,10 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const id = useId();
   const popover = usePresence(open, 160);
+  const favColors = useEditor((s) => s.favColors);
+  const toggleFav = useEditor((s) => s.toggleFavColor);
+  const current = normalizeHex(color).toLowerCase();
+  const isFav = favColors.includes(current);
   const firstColor = useRef(color);
   const changed = useRef(false);
   if (color !== firstColor.current) changed.current = true;
@@ -80,6 +86,28 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
               />
             ))}
           </div>
+          {favColors.length > 0 && (
+            <div className="popover-favs">
+              <span className="label">
+                <StarIcon width={12} height={12} filled /> {t('favorites')}
+              </span>
+              <div className="popover-grid">
+                {favColors.map((c, i) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`swatch swatch-sm${c === current ? ' is-current' : ''}`}
+                    style={{ background: c, '--i': i } as React.CSSProperties}
+                    aria-label={`${t('favorites')}: ${c}`}
+                    onClick={() => {
+                      onChange(c);
+                      setOpen(false);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           <div className="popover-row">
             <label className="hex-field">
               <span>{t('hex')}</span>
@@ -96,6 +124,16 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
               <input type="color" value={normalizeHex(color)} onChange={(e) => onChange(e.target.value)} aria-label={t('customColor')} />
               <span style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }} />
             </label>
+            <button
+              type="button"
+              className={`fav-star${isFav ? ' is-on' : ''}`}
+              aria-pressed={isFav}
+              title={isFav ? t('favColorRemove') : t('favColorAdd')}
+              aria-label={isFav ? t('favColorRemove') : t('favColorAdd')}
+              onClick={() => toggleFav(current)}
+            >
+              <StarIcon key={String(isFav)} width={20} height={20} filled={isFav} />
+            </button>
           </div>
         </div>
       )}

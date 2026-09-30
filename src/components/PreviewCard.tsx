@@ -12,7 +12,7 @@ import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
-import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, TrashIcon } from './icons';
+import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, StarIcon, TrashIcon } from './icons';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
 import { emojiName } from './TemplateGrid';
@@ -62,6 +62,7 @@ function ImportedPanel({ id }: { id: string }) {
   const t = useT();
   const imp = useEditor((s) => s.imports.find((i) => i.id === id));
   const remove = useEditor((s) => s.removeImport);
+  const addFavColors = useEditor((s) => s.addFavColors);
   if (!imp) return null;
   return (
     <div className="imported-panel">
@@ -75,6 +76,15 @@ function ImportedPanel({ id }: { id: string }) {
       </div>
       <Toggle label={t('importedOverlay')} checked={imp.overlay} onChange={(v) => editImport(id, { kind: 'overlay', value: v })} />
       <div className="row-actions">
+        <MotionButton
+          motion="twinkle"
+          className="pill-btn is-compact"
+          icon={<StarIcon width={16} height={16} />}
+          label={t('favPaletteAdd')}
+          onClick={() => addFavColors(imp.palette.map((c) => imp.colorMap[c] ?? c))}
+        >
+          {t('favPaletteAdd')}
+        </MotionButton>
         <button type="button" className="pill-btn is-compact" onClick={() => editImport(id, { kind: 'colorsReset' })}>
           <ResetIcon width={18} height={18} /> {t('importedReset')}
         </button>

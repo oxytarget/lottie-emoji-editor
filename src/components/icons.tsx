@@ -171,3 +171,8 @@ export const GrabIcon = (p: P) => (
     <path d="M12 3v18M3 12h18M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5" />
   </svg>
 );
+export const StarIcon = ({ filled, ...p }: P & { filled?: boolean }) => (
+  <svg {...base(p)}>
+    <path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z" fill={filled ? 'currentColor' : 'none'} />
+  </svg>
+);
