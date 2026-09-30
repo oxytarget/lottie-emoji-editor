@@ -35,6 +35,8 @@ export function TemplateGrid({ emojis }: { emojis: CompiledEmoji[] }) {
         palette: extractPalette(data),
         colorMap: {},
         overlay: false,
+        hidden: [],
+        replace: null,
       });
     } catch {
       setError(true);

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** Returns true while the element is (nearly) on screen. */
-function useInView<T extends Element>(ref: React.RefObject<T | null>): boolean {
+export function useInView<T extends Element>(ref: React.RefObject<T | null>): boolean {
   const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = ref.current;
@@ -25,9 +25,11 @@ interface Props {
   playing?: boolean;
   className?: string;
   label?: string;
+  /** Frame shown while paused (defaults to the current/first frame). */
+  frame?: number;
 }
 
-export function LottieView({ json, playing = true, className, label }: Props) {
+export function LottieView({ json, playing = true, className, label, frame: stillFrame }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const animRef = useRef<AnimationItem | null>(null);
   const loadedJson = useRef<string | null>(null);
@@ -49,7 +51,7 @@ export function LottieView({ json, playing = true, className, label }: Props) {
       animationData: JSON.parse(json),
       rendererSettings: { preserveAspectRatio: 'xMidYMid meet', progressiveLoad: false },
     });
-    anim.goToAndStop(reducedMotion ? Math.round(anim.totalFrames * 0.3) : frame, true);
+    anim.goToAndStop(stillFrame ?? (reducedMotion ? Math.round(anim.totalFrames * 0.3) : frame), true);
     animRef.current = anim;
     loadedJson.current = json;
     if (shouldPlay) anim.play();

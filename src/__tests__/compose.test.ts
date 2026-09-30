@@ -128,7 +128,7 @@ describe('compileAll', () => {
       outlineWidth: 12,
       scale: 1,
       offsetY: 0,
-      imports: [{ id: 'import-x', data: imported, colorMap: { '#7c3aed': '#ff0000' }, overlay: true }],
+      imports: [{ id: 'import-x', data: imported, colorMap: { '#7c3aed': '#ff0000' }, overlay: true, hidden: [], replace: null }],
     });
     expect(out.map((o) => o.id)).toEqual([...BUILTIN_TEMPLATES.map((t) => t.id), 'import-x']);
     for (const o of out) {

@@ -2,6 +2,7 @@ import type { ArtStyle, VectorArt } from '../content/art';
 import { compose } from '../lottie/compose';
 import { checkTgs, tgsFromJson, toJson, type TgsCheck } from '../lottie/export';
 import { recolor, withOverlay } from '../lottie/imported';
+import { applyPartEdits } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { BUILTIN_TEMPLATES } from '../templates/builtin';
 import type { EmojiColors } from '../templates/types';
@@ -14,7 +15,7 @@ export interface CompileInput {
   outlineWidth: number;
   scale: number;
   offsetY: number;
-  imports: Array<{ id: string; data: LottieAnimation; colorMap: Record<string, string>; overlay: boolean }>;
+  imports: Array<{ id: string; data: LottieAnimation; colorMap: Record<string, string>; overlay: boolean; hidden: string[]; replace: string | null }>;
 }
 
 export interface CompileOutput {
@@ -37,6 +38,7 @@ export function compileAll(input: CompileInput): CompileOutput[] {
   );
   for (const imp of input.imports) {
     let anim = recolor(imp.data, imp.colorMap);
+    anim = applyPartEdits(anim, { hidden: imp.hidden, replace: imp.replace }, { art, artStyle, scale, offsetY });
     if (imp.overlay && art) anim = withOverlay(anim, { art, artStyle, scale, offsetY });
     out.push(finish(imp.id, anim));
   }

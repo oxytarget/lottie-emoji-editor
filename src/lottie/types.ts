@@ -52,7 +52,8 @@ export interface LayerTransform {
 export interface Layer {
   ddd: 0;
   ind: number;
-  ty: 3 | 4;
+  /** 0 precomp, 1 solid, 2 image, 3 null, 4 shape, 5 text — generated files only use 3 and 4. */
+  ty: number;
   nm: string;
   sr: 1;
   ks: LayerTransform;

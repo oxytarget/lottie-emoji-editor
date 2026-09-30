@@ -16,6 +16,7 @@ const PROBLEM_KEYS: Record<TgsCheck['problems'][number], I18nKey> = {
   canvas: 'problemCanvas',
   fps: 'problemFps',
   duration: 'problemDuration',
+  unsupported: 'problemUnsupported',
 };
 
 const ERROR_KEYS: Record<BotError, I18nKey> = {

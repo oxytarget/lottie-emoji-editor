@@ -1612,3 +1612,120 @@ p {
   border-color: var(--accent-line);
   border-top-color: var(--accent);
 }
+
+.pill-btn.is-accent {
+  background: var(--accent);
+  color: #fff;
+}
+
+.parts-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--sub);
+  border: 1px solid var(--line);
+}
+
+.part-suggest {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  font-weight: 800;
+}
+
+.parts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.part-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px calc(6px + var(--depth, 0) * 18px);
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.part-row.is-hidden .part-thumb,
+.part-row.is-hidden .part-name {
+  opacity: 0.4;
+}
+
+.part-row.is-replaced {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.part-expand {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--muted);
+}
+
+.part-expand .is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.part-thumb {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 10px;
+  background: repeating-conic-gradient(#e3e5ee 0 25%, #fbfbfd 0 50%) 0 0 / 12px 12px;
+  overflow: hidden;
+}
+
+.part-thumb-anim {
+  width: 100%;
+  height: 100%;
+}
+
+.part-name {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.part-name strong {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.part-name .hint {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.part-badge {
+  font-style: normal;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+  font-size: 11px;
+}
+
+.part-badge.is-accent {
+  background: var(--accent);
+  color: #fff;
+}

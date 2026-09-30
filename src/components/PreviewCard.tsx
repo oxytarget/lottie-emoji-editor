@@ -7,6 +7,7 @@ import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
 import { PauseIcon, PlayIcon, ResetIcon, TrashIcon } from './icons';
 import { LottieView } from './LottieView';
+import { PartsPanel } from './PartsPanel';
 import { emojiName } from './TemplateGrid';
 
 const BGS: PreviewBg[] = ['light', 'dark', 'chess'];
@@ -19,6 +20,7 @@ function ImportedPanel({ id }: { id: string }) {
   if (!imp) return null;
   return (
     <div className="imported-panel">
+      <PartsPanel key={imp.id} imp={imp} />
       <h3 className="section-title">{t('importedPalette')}</h3>
       <div className="palette-map">
         {imp.palette.map((from) => (

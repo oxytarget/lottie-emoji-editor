@@ -149,7 +149,7 @@ export function useCompiled(): Compiled {
       outlineWidth: s.outlineWidth,
       scale: s.scale,
       offsetY: s.offsetY,
-      imports: s.imports.map(({ id, data, colorMap, overlay }) => ({ id, data, colorMap, overlay })),
+      imports: s.imports.map(({ id, data, colorMap, overlay, hidden, replace }) => ({ id, data, colorMap, overlay, hidden, replace })),
     }),
     [art, artStyle, s.colors, s.outlineWidth, s.scale, s.offsetY, s.imports],
   );

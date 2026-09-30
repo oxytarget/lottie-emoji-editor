@@ -14,6 +14,10 @@ export interface ImportedTemplate {
   palette: string[];
   colorMap: Record<string, string>;
   overlay: boolean;
+  /** Part ids (see lottie/parts.ts) hidden by the user. */
+  hidden: string[];
+  /** Part replaced by the user's text/logo (keeps that part's animation). */
+  replace: string | null;
 }
 
 export type PreviewBg = 'light' | 'dark' | 'chess';

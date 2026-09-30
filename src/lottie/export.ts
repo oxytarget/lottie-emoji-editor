@@ -29,7 +29,13 @@ export function tgsFromJson(json: string): Uint8Array {
 export interface TgsCheck {
   bytes: number;
   ok: boolean;
-  problems: Array<'size' | 'canvas' | 'fps' | 'duration'>;
+  problems: Array<'size' | 'canvas' | 'fps' | 'duration' | 'unsupported'>;
+}
+
+/** Text (ty 5) and image (ty 2) layers do not render in Telegram's TGS player. */
+function hasUnsupportedLayers(anim: LottieAnimation): boolean {
+  const lists = [anim.layers, ...((anim.assets ?? []) as Array<{ layers?: LottieAnimation['layers'] }>).map((a) => a?.layers ?? [])];
+  return lists.some((layers) => layers.some((l) => l.ty === 5 || l.ty === 2));
 }
 
 export function checkTgs(anim: LottieAnimation, bytes: number): TgsCheck {
@@ -38,6 +44,7 @@ export function checkTgs(anim: LottieAnimation, bytes: number): TgsCheck {
   if (anim.w !== TGS_LIMITS.size || anim.h !== TGS_LIMITS.size) problems.push('canvas');
   if (anim.fr !== TGS_LIMITS.fps) problems.push('fps');
   if (anim.op - anim.ip > TGS_LIMITS.maxFrames) problems.push('duration');
+  if (hasUnsupportedLayers(anim)) problems.push('unsupported');
   return { bytes, ok: problems.length === 0, problems };
 }
 
