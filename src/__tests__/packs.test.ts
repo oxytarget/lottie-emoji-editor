@@ -29,7 +29,7 @@ const tgs = (i = 0) =>
 
 const readAnim = async (f: File) => JSON.parse(strFromU8(gunzipSync(new Uint8Array(await f.arrayBuffer()))));
 
-type Responder = (method: string, n: number) => { ok: boolean; result?: unknown; error_code?: number; description?: string };
+type Responder = (method: string, n: number) => { ok: boolean; result?: unknown; error_code?: number; description?: string; parameters?: { retry_after?: number } };
 function mockTelegram(respond: Responder = () => ({ ok: true, result: true })) {
   const calls: { method: string; body: FormData | Record<string, unknown> }[] = [];
   const counts = new Map<string, number>();
@@ -191,5 +191,54 @@ describe('POST /api/pack', () => {
     json.append('files', new File(['{}'], 'a.json'));
     expect((await handle(new Request('https://api.test/api/pack', { method: 'POST', body: json }), env)).status).toBe(400);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('big packs (several requests)', () => {
+  const ownSet = 'e1_abcde_by_Test_Emoji_bot';
+
+  it('reports how many stickers made it before an error, so the client can continue', async () => {
+    mockTelegram((method, n) =>
+      method === 'addStickerToSet' && n === 3 ? { ok: false, error_code: 400, description: 'Bad Request: STICKER_EMOJI_INVALID something' } : { ok: true, result: true },
+    );
+    const res = await handle(await packRequest({ files: 5, set: ownSet }), env);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false, error: 'bad-emoji', added: 2, name: ownSet });
+  });
+
+  it('passes long flood waits to the client with the progress so far', async () => {
+    mockTelegram((method, n) =>
+      method === 'addStickerToSet' && n === 2 ? { ok: false, error_code: 429, description: 'Too Many Requests: retry after 40', parameters: { retry_after: 40 } } : { ok: true, result: true },
+    );
+    const res = await handle(await packRequest({ files: 3, set: ownSet }), env);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ ok: false, error: 'flood', retryAfter: 40, added: 1, name: ownSet });
+  });
+
+  it('sits out short flood waits itself', async () => {
+    const calls = mockTelegram((method, n) =>
+      method === 'addStickerToSet' && n === 1 ? { ok: false, error_code: 429, description: 'Too Many Requests: retry after 1', parameters: { retry_after: 1 } } : { ok: true, result: true },
+    );
+    const res = await handle(await packRequest({ files: 2, set: ownSet }), env);
+    expect(await res.json()).toMatchObject({ ok: true, added: 2 });
+    expect(calls.filter((c) => c.method === 'addStickerToSet')).toHaveLength(3);
+  });
+
+  it('sends the chat message only with the last request, counting the whole pack', async () => {
+    const quiet = mockTelegram();
+    const req = await packRequest({ files: 2, set: ownSet });
+    const form = await req.formData();
+    form.set('notify', '0');
+    await handle(new Request(req.url, { method: 'POST', body: form, headers: { origin: 'https://example.github.io' } }), env);
+    expect(quiet.some((c) => c.method === 'sendMessage')).toBe(false);
+
+    const loud = mockTelegram();
+    const last = await (await packRequest({ files: 2, set: ownSet })).formData();
+    last.set('total', '97');
+    last.set('fresh', '1');
+    await handle(new Request('https://api.test/api/pack', { method: 'POST', body: last, headers: { origin: 'https://example.github.io' } }), env);
+    const msg = loud.find((c) => c.method === 'sendMessage')!.body as { text: string };
+    expect(msg.text).toContain('97');
+    expect(msg.text).toContain('готовий');
   });
 });

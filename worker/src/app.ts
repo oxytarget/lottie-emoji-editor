@@ -33,19 +33,20 @@ const MAX_TGS_BYTES = 64 * 1024;
 const MAX_JSON_BYTES = 512 * 1024;
 const FILE_NAME = /^[\p{L}\p{N}._-]{1,80}\.(tgs|json)$/u;
 
-/** Sends documents to a chat: sendDocument for one file, sendMediaGroup (≤ 10 per album) for more. */
-async function sendFiles(env: Env, chatId: number, files: File[], caption: string): Promise<void> {
+/** Sends documents to a chat: sendDocument for one file, sendMediaGroup (≤ 10 per album) for more. `progress.sent` counts delivered files. */
+async function sendFiles(env: Env, chatId: number, files: File[], caption: string | null, progress: { sent: number }): Promise<void> {
   for (let start = 0; start < files.length; start += 10) {
     const chunk = files.slice(start, start + 10);
-    const isLast = start + 10 >= files.length;
+    const isLast = start + 10 >= files.length && caption !== null;
     const form = new FormData();
     form.set('chat_id', String(chatId));
     if (chunk.length === 1) {
       form.set('document', chunk[0], chunk[0].name);
       // Keep .tgs as a file (instead of converting it to a sticker) so it can be forwarded to @Stickers.
       form.set('disable_content_type_detection', 'true');
-      if (isLast) form.set('caption', caption);
+      if (isLast && caption) form.set('caption', caption);
       await telegram(env, 'sendDocument', form);
+      progress.sent += 1;
       continue;
     }
     const media = chunk.map((_file, i) => ({
@@ -57,6 +58,7 @@ async function sendFiles(env: Env, chatId: number, files: File[], caption: strin
     form.set('media', JSON.stringify(media));
     chunk.forEach((file, i) => form.set(`file${i}`, file, file.name));
     await telegram(env, 'sendMediaGroup', form);
+    progress.sent += chunk.length;
   }
 }
 
@@ -78,15 +80,21 @@ async function handleSend(req: Request, env: Env, cors: Record<string, string>):
     if (!FILE_NAME.test(f.name) || f.size === 0 || f.size > limit) return json({ ok: false, error: 'bad-files', file: f.name }, 400, cors);
   }
 
+  const progress = { sent: 0 };
+  // Big exports arrive in several requests: the instructions go with the last one only.
+  const caption = form.get('last') === '0' ? null : TEXTS[pickLang(auth.user.language_code)].caption;
   try {
-    await sendFiles(env, auth.user.id, files, TEXTS[pickLang(auth.user.language_code)].caption);
+    await sendFiles(env, auth.user.id, files, caption, progress);
   } catch (err) {
     if (err instanceof TelegramError && err.status === 403) {
       // The user has not started the bot yet (or blocked it): the Mini App asks for write access and retries.
-      return json({ ok: false, error: 'forbidden' }, 403, cors);
+      return json({ ok: false, error: 'forbidden', ...progress }, 403, cors);
+    }
+    if (err instanceof TelegramError && err.status === 429) {
+      return json({ ok: false, error: 'flood', retryAfter: err.retryAfter ?? 30, ...progress }, 429, cors);
     }
     console.error('send failed', err instanceof Error ? err.message : err);
-    return json({ ok: false, error: 'telegram' }, 502, cors);
+    return json({ ok: false, error: 'telegram', detail: err instanceof Error ? err.message : undefined, ...progress }, 502, cors);
   }
   return json({ ok: true, sent: files.length }, 200, cors);
 }

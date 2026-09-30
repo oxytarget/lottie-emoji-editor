@@ -135,7 +135,7 @@ const dict = {
     en: 'Some Telegram clients block downloads inside mini apps — open the editor in a browser.',
   },
   sendToChat: { uk: 'Надіслати в чат', ru: 'Отправить в чат', en: 'Send to chat' },
-  sending: { uk: 'Надсилаю…', ru: 'Отправляю…', en: 'Sending…' },
+  sending: { uk: 'Надсилаю', ru: 'Отправляю', en: 'Sending' },
   sentToChat: { uk: 'Готово! Файли вже в чаті з ботом.', ru: 'Готово! Файлы уже в чате с ботом.', en: 'Done! The files are in your chat with the bot.' },
   goToChat: { uk: 'До чату', ru: 'В чат', en: 'Open chat' },
   sendFailed: { uk: 'Не вдалося надіслати. Спробуйте ще раз.', ru: 'Не удалось отправить. Попробуйте ещё раз.', en: 'Could not send. Please try again.' },
@@ -161,7 +161,7 @@ const dict = {
   },
   packCreate: { uk: 'Створити пак', ru: 'Создать пак', en: 'Create pack' },
   packAdd: { uk: 'Додати в пак', ru: 'Добавить в пак', en: 'Add to pack' },
-  packCreating: { uk: 'Бот збирає пак…', ru: 'Бот собирает пак…', en: 'The bot is building the pack…' },
+  packCreating: { uk: 'Бот збирає пак', ru: 'Бот собирает пак', en: 'Building the pack' },
   packCreated: { uk: 'Пак готовий! Посилання також у чаті з ботом.', ru: 'Пак готов! Ссылка также в чате с ботом.', en: 'The pack is ready! The link is also in the bot chat.' },
   packUpdated: { uk: 'Емодзі додано в пак.', ru: 'Эмодзи добавлены в пак.', en: 'Emoji added to the pack.' },
   packOpen: { uk: 'Відкрити пак', ru: 'Открыть пак', en: 'Open pack' },
@@ -231,6 +231,25 @@ const dict = {
   syncSelectPack: { uk: 'Обрати весь пак', ru: 'Выбрать весь пак', en: 'Select the whole pack' },
   syncApplied: { uk: 'Застосовано', ru: 'Применено', en: 'Applied' },
   syncMissing: { uk: 'в інших немає такої частини чи кольору', ru: 'в остальных нет такой части или цвета', en: 'the others have no such part or colour' },
+  packWaiting: { uk: 'Telegram просить зачекати', ru: 'Telegram просит подождать', en: 'Telegram asks to wait' },
+  packContinue: { uk: 'Додати решту', ru: 'Добавить остальные', en: 'Add the rest' },
+  packPartial: {
+    uk: 'У пак уже додано {done} з {total}. Натисніть «Додати решту» — продовжу з того місця.',
+    ru: 'В пак уже добавлено {done} из {total}. Нажмите «Добавить остальные» — продолжу с того места.',
+    en: '{done} of {total} are already in the pack. Press “Add the rest” to continue from there.',
+  },
+  packFailed: { uk: 'Не вдалося створити пак.', ru: 'Не удалось создать пак.', en: 'Could not create the pack.' },
+  packFlood: {
+    uk: 'Telegram тимчасово обмежив запити від бота. Спробуйте за кілька хвилин.',
+    ru: 'Telegram временно ограничил запросы бота. Попробуйте через несколько минут.',
+    en: 'Telegram is rate-limiting the bot for now. Try again in a few minutes.',
+  },
+  packBadFiles: { uk: 'Сервер не прийняв файли.', ru: 'Сервер не принял файлы.', en: 'The server did not accept the files.' },
+  sendPartial: {
+    uk: 'Уже надіслано {done} з {total}. Натисніть ще раз — надішлю решту.',
+    ru: 'Уже отправлено {done} из {total}. Нажмите ещё раз — отправлю остальные.',
+    en: '{done} of {total} are sent. Press again to send the rest.',
+  },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;

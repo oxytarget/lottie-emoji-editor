@@ -13,10 +13,16 @@ export class TelegramError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Seconds Telegram asks to wait (flood control, HTTP 429). */
+    readonly retryAfter?: number,
   ) {
     super(message);
   }
 }
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Short flood waits are sat out here; longer ones go back to the client, which waits and continues. */
+const MAX_INLINE_WAIT = 8;
 
 export function corsHeaders(req: Request, env: Env): Record<string, string> {
   const origin = req.headers.get('origin') ?? '';
@@ -49,13 +55,22 @@ export async function telegram(env: Env, method: string, body: FormData | Record
     body instanceof FormData
       ? { method: 'POST', body }
       : { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } };
-  const res = await fetch(`${base}/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, init);
-  const data = (await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }))) as {
-    ok: boolean;
-    result?: unknown;
-    description?: string;
-    error_code?: number;
-  };
-  if (!data.ok) throw new TelegramError(data.error_code ?? res.status, data.description ?? 'Telegram API error');
-  return data.result;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${base}/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, init);
+    const data = (await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }))) as {
+      ok: boolean;
+      result?: unknown;
+      description?: string;
+      error_code?: number;
+      parameters?: { retry_after?: number };
+    };
+    if (data.ok) return data.result;
+    const code = data.error_code ?? res.status;
+    const retryAfter = code === 429 ? data.parameters?.retry_after ?? (Number(/retry after (\d+)/i.exec(data.description ?? '')?.[1]) || 5) : undefined;
+    if (retryAfter !== undefined && retryAfter <= MAX_INLINE_WAIT && attempt < 2) {
+      await sleep(retryAfter * 1000 + 300);
+      continue;
+    }
+    throw new TelegramError(code, data.description ?? 'Telegram API error', retryAfter);
+  }
 }

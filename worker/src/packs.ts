@@ -3,7 +3,7 @@
  *
  * Form fields: initData, title, set (optional existing pack name), files[] (.tgs) and emojis[] (one per file).
  */
-import { json, telegram, TelegramError, type Env } from './shared.js';
+import { json, json as jsonResponse, telegram, TelegramError, type Env } from './shared.js';
 import { packTexts, pickLang, validateInitData } from './telegram.js';
 import { toEmojiCanvas } from './tgs.js';
 
@@ -91,12 +91,15 @@ async function addToSet(env: Env, userId: number, name: string, sticker: Sticker
 
 const isFormatError = (err: unknown) => err instanceof TelegramError && FORMAT_ERROR.test(err.message);
 
-function errorResponse(err: unknown, cors: Record<string, string>): Response {
+/** `progress`: what was done before the error (stickers already in the pack), so the client can continue. */
+function errorResponse(err: unknown, cors: Record<string, string>, progress: { added: number; name?: string } = { added: 0 }): Response {
+  const json = (body: Record<string, unknown>, status: number, headers: Record<string, string>) => jsonResponse({ ...body, ...progress }, status, headers);
   if (!(err instanceof TelegramError)) {
     console.error('pack failed', err instanceof Error ? err.message : err);
     return json({ ok: false, error: 'server' }, 500, cors);
   }
   const detail = err.message;
+  if (err.status === 429) return json({ ok: false, error: 'flood', retryAfter: err.retryAfter ?? 30, detail }, 429, cors);
   if (err.status === 403 || FORBIDDEN_ERROR.test(detail)) return json({ ok: false, error: 'forbidden', detail }, 403, cors);
   if (/STICKERS_TOO_MUCH|too many stickers|STICKERSET_FULL/i.test(detail)) return json({ ok: false, error: 'pack-full', detail }, 409, cors);
   if (/STICKERSET_INVALID|sticker set not found|not found/i.test(detail)) return json({ ok: false, error: 'pack-not-found', detail }, 404, cors);
@@ -144,11 +147,16 @@ export async function handlePack(req: Request, env: Env, cors: Record<string, st
     if (existing) {
       for (let i = 0; i < files.length; i++) {
         try {
-          await addToSet(env, userId, name, variants[canvas][i]);
+          try {
+            await addToSet(env, userId, name, variants[canvas][i]);
+          } catch (err) {
+            if (canvas !== 100 || !isFormatError(err)) throw err;
+            canvas = 512;
+            await addToSet(env, userId, name, variants[canvas][i]);
+          }
         } catch (err) {
-          if (canvas !== 100 || !isFormatError(err)) throw err;
-          canvas = 512;
-          await addToSet(env, userId, name, variants[canvas][i]);
+          // Stickers before this one are in the pack: tell the client, it continues from here.
+          return errorResponse(err, cors, { added: i, name });
         }
       }
     } else {
@@ -167,14 +175,19 @@ export async function handlePack(req: Request, env: Env, cors: Record<string, st
     }
 
     const url = `https://t.me/addemoji/${name}`;
-    try {
-      await telegram(env, 'sendMessage', {
-        chat_id: userId,
-        text: existing ? texts.updated(title, files.length) : texts.created(title, files.length),
-        reply_markup: { inline_keyboard: [[{ text: texts.open, url }]] },
-      });
-    } catch {
-      // The pack exists even if the notification could not be delivered.
+    // Big packs arrive in several requests: the client asks for the chat message only with the last one.
+    if (form.get('notify') !== '0') {
+      const count = Number(form.get('total')) || files.length;
+      const fresh = !existing || form.get('fresh') === '1';
+      try {
+        await telegram(env, 'sendMessage', {
+          chat_id: userId,
+          text: fresh ? texts.created(title, count) : texts.updated(title, count),
+          reply_markup: { inline_keyboard: [[{ text: texts.open, url }]] },
+        });
+      } catch {
+        // The pack exists even if the notification could not be delivered.
+      }
     }
     return json({ ok: true, name, url, title, added: files.length, canvas }, 200, cors);
   } catch (err) {

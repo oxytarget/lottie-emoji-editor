@@ -354,6 +354,50 @@ p {
   color: var(--danger);
 }
 
+/* Error with details and actions (several lines) */
+div.note {
+  flex-direction: column;
+  gap: 8px;
+}
+
+div.note p {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+}
+
+div.note p + p {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.job-progress {
+  height: 6px;
+  margin-top: -4px;
+  border-radius: 6px;
+  background: var(--sub-2);
+  overflow: hidden;
+}
+
+.job-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.job-progress span.is-waiting {
+  background: var(--warn);
+  animation: pulse-bar 1s ease-in-out infinite alternate;
+}
+
+@keyframes pulse-bar {
+  from { opacity: 1; }
+  to { opacity: 0.45; }
+}
+
 /* ---------- Controls ---------- */
 
 .segmented {
