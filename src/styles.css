@@ -2696,7 +2696,7 @@ div.note p + p {
   box-shadow: var(--shadow-sm);
 }
 
-.fav-colors > .label {
+.fav-colors .fav-head .label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2802,6 +2802,120 @@ div.note p + p {
   border-radius: 50%;
   border: 2px solid var(--card);
   box-shadow: 0 0 0 1px var(--line);
+}
+
+/* Managing favourites */
+.fav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fav-head .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fav-head .label svg {
+  color: #f59e0b;
+}
+
+.fav-edit-toggle {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent);
+  background: var(--accent-soft);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.fav-edit-toggle.is-on {
+  color: var(--on-accent, #fff);
+  background: var(--accent);
+}
+
+.fav-edit-bar {
+  display: grid;
+  gap: 8px;
+  animation: item-in 0.22s var(--ease-out, ease);
+}
+
+.fav-edit-bar .hint {
+  margin: 0;
+}
+
+.fav-edit-bar .pill-btn:disabled {
+  opacity: 0.45;
+}
+
+.fav-check {
+  position: absolute;
+  color: #fff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
+}
+
+.fav-color {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.is-editing .fav-color,
+.is-editing .fav-chip,
+.is-editing .fav-logo-main {
+  cursor: pointer;
+  animation: wobble 0.9s ease-in-out infinite;
+}
+
+.is-editing .fav-color:nth-child(2n),
+.is-editing .fav-chip:nth-child(2n),
+.is-editing .fav-logo:nth-child(2n) .fav-logo-main {
+  animation-delay: -0.45s;
+}
+
+@keyframes wobble {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
+.fav-color.is-selected {
+  box-shadow: 0 0 0 3px var(--danger), var(--shadow-sm);
+  animation: none;
+  transform: scale(0.92);
+}
+
+.fav-chip {
+  position: relative;
+}
+
+.fav-chip.is-selected,
+.fav-logo.is-selected .fav-logo-main {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger);
+  animation: none;
+}
+
+.fav-chip .fav-check {
+  right: 4px;
+  top: 4px;
+  color: var(--danger);
+  filter: none;
+}
+
+.fav-logo-main {
+  position: relative;
+}
+
+.fav-logo .fav-check {
+  right: 6px;
+  top: 6px;
+  color: var(--danger);
+  filter: none;
 }
 
 /* "Edit all selected together" */

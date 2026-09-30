@@ -143,6 +143,8 @@ export interface EditorActions {
   /** Returns the saved logo, or null when it is too big to keep. */
   addFavLogo(logo: { name: string; svg: string }): FavLogo | null;
   removeFavLogo(id: string): void;
+  removeFavColors(hexes: readonly string[]): void;
+  removeFavLogos(ids: readonly string[]): void;
   /** Makes a logo the current content (logo mode). */
   useLogo(logo: { name: string; svg: string }): void;
   /** Saves the current colours (and, with `withContent`, the current text or logo) as a preset. */
@@ -346,6 +348,14 @@ export const useEditor = create<EditorData & EditorActions>()(
         return logo;
       },
       removeFavLogo: (id) => set({ favLogos: get().favLogos.filter((f) => f.id !== id) }),
+      removeFavColors: (hexes) => {
+        const gone = new Set(hexes.map((h) => h.toLowerCase()));
+        set({ favColors: get().favColors.filter((c) => !gone.has(c)) });
+      },
+      removeFavLogos: (ids) => {
+        const gone = new Set(ids);
+        set({ favLogos: get().favLogos.filter((f) => !gone.has(f.id)) });
+      },
       useLogo: ({ name, svg }) => set({ logo: { name, svg }, mode: 'logo' }),
       saveUserPreset: (name, withContent) => {
         const s = get();

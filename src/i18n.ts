@@ -349,6 +349,15 @@ const dict = {
   },
   paintBanner: { uk: 'Торкайтеся кружків, щоб пофарбувати', ru: 'Касайтесь кружков, чтобы покрасить', en: 'Tap circles to paint them' },
   paintDone: { uk: 'Готово', ru: 'Готово', en: 'Done' },
+  favEdit: { uk: 'Змінити', ru: 'Изменить', en: 'Edit' },
+  favDone: { uk: 'Готово', ru: 'Готово', en: 'Done' },
+  favSelectHint: { uk: 'Торкайтеся, щоб обрати, що видалити.', ru: 'Касайтесь, чтобы выбрать, что удалить.', en: 'Tap items to select what to delete.' },
+  favSelectAll: { uk: 'Обрати всі', ru: 'Выбрать все', en: 'Select all' },
+  favSelectNone: { uk: 'Зняти вибір', ru: 'Снять выбор', en: 'Select none' },
+  favDeleteSelected: { uk: 'Видалити ({n})', ru: 'Удалить ({n})', en: 'Delete ({n})' },
+  favClearAll: { uk: 'Очистити все', ru: 'Очистить всё', en: 'Clear all' },
+  favClearColorsConfirm: { uk: 'Видалити всі обрані кольори ({n})?', ru: 'Удалить все избранные цвета ({n})?', en: 'Delete all favourite colours ({n})?' },
+  favClearLogosConfirm: { uk: 'Видалити всі обрані лого ({n})?', ru: 'Удалить все избранные лого ({n})?', en: 'Delete all favourite logos ({n})?' },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;

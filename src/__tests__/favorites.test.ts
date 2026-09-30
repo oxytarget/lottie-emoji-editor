@@ -28,6 +28,21 @@ describe('favourites', () => {
     s.removeFavLogo(a.id);
     expect(useEditor.getState().favLogos).toEqual([]);
   });
+
+  it('removes several chosen favourites at once, or all of them', () => {
+    const s = useEditor.getState();
+    s.addFavColors(['#111111', '#222222', '#333333']);
+    s.removeFavColors(['#222222', '#FFFFFF']);
+    expect(useEditor.getState().favColors).toEqual(['#111111', '#333333']);
+    s.removeFavColors(useEditor.getState().favColors);
+    expect(useEditor.getState().favColors).toEqual([]);
+
+    const ids = [1, 2, 3].map((n) => s.addFavLogo({ name: `L${n}`, svg: svg(n) })!.id);
+    s.removeFavLogos([ids[0], ids[2], 'unknown']);
+    expect(useEditor.getState().favLogos.map((f) => f.name)).toEqual(['L2']);
+    s.removeFavLogos(ids);
+    expect(useEditor.getState().favLogos).toEqual([]);
+  });
 });
 
 describe('user presets', () => {

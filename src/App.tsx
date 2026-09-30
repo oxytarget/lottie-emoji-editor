@@ -11,7 +11,7 @@ import { ImportedPanel, PreviewCard } from './components/PreviewCard';
 import { TemplateGrid } from './components/TemplateGrid';
 import type { I18nKey } from './i18n';
 import { fetchBotPacks, packsAvailable } from './lib/botApi';
-import { haptic, useBackButton, useMainButton } from './lib/telegram';
+import { confirmAction, haptic, useBackButton, useMainButton } from './lib/telegram';
 import { openPack } from './state/packs';
 import { useEditor } from './state/store';
 import { useUi, type Tab } from './state/ui';
@@ -179,7 +179,7 @@ export default function App() {
             className="icon-btn is-round is-ghost"
             label={t('reset')}
             icon={<ResetIcon />}
-            onClick={() => window.confirm(t('resetConfirm')) && reset()}
+            onClick={async () => (await confirmAction(t('resetConfirm'))) && reset()}
           />
         </div>
       </header>

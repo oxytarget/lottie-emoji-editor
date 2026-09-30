@@ -5,8 +5,9 @@ import type { I18nKey } from '../i18n';
 import { useEditor } from '../state/store';
 import { useT } from '../state/useT';
 import { DiceButton, GradientTools, MotionButton, PaintSwatches, Segmented, Slider, Toggle } from './controls';
+import { FavEditBar, FavEditToggle, useFavSelection } from './FavEdit';
 import { usePresence } from './motion';
-import { ChevronIcon, CloseIcon, ImageIcon, SlidersIcon, StarIcon, TrashIcon, TypeIcon, UploadIcon, WarningIcon } from './icons';
+import { CheckIcon, ChevronIcon, CloseIcon, ImageIcon, SlidersIcon, StarIcon, TrashIcon, TypeIcon, UploadIcon, WarningIcon } from './icons';
 
 const WARNING_KEYS: Record<SvgWarning, I18nKey> = {
   text: 'warnText',
@@ -216,28 +217,48 @@ function FavLogos() {
   const logo = useEditor((s) => s.logo);
   const useLogo = useEditor((s) => s.useLogo);
   const remove = useEditor((s) => s.removeFavLogo);
+  const removeMany = useEditor((s) => s.removeFavLogos);
+  const sel = useFavSelection();
   return (
-    <div className="fav-logos">
-      <span className="label">
-        <StarIcon width={14} height={14} filled /> {t('favorites')}
-      </span>
+    <div className={`fav-logos${sel.editing ? ' is-editing' : ''}`}>
+      <div className="fav-head">
+        <span className="label">
+          <StarIcon width={14} height={14} filled /> {t('favorites')}
+        </span>
+        {favs.length > 0 && <FavEditToggle sel={sel} />}
+      </div>
       {favs.length === 0 ? (
         <p className="hint">{t('favLogosEmpty')}</p>
       ) : (
         <div className="fav-logo-grid">
           {favs.map((f, i) => (
-            <div key={f.id} className={`fav-logo${logo?.svg === f.svg ? ' is-active' : ''}`} style={{ '--i': i } as React.CSSProperties}>
-              <button type="button" className="fav-logo-main" title={f.name} aria-label={`${t('favLogoUse')}: ${f.name}`} onClick={() => useLogo(f)}>
+            <div
+              key={f.id}
+              className={`fav-logo${logo?.svg === f.svg && !sel.editing ? ' is-active' : ''}${sel.selected.has(f.id) ? ' is-selected' : ''}`}
+              style={{ '--i': i } as React.CSSProperties}
+            >
+              <button
+                type="button"
+                className="fav-logo-main"
+                title={f.name}
+                aria-pressed={sel.editing ? sel.selected.has(f.id) : undefined}
+                aria-label={`${sel.editing ? t('favEdit') : t('favLogoUse')}: ${f.name}`}
+                onClick={() => (sel.editing ? sel.toggle(f.id) : useLogo(f))}
+              >
                 <img src={svgUrl(f.svg)} alt="" />
                 <span>{f.name}</span>
+                {sel.selected.has(f.id) && <CheckIcon width={16} height={16} strokeWidth={3.5} className="fav-check" />}
               </button>
-              <button type="button" className="fav-logo-remove" aria-label={`${t('favLogoRemove')}: ${f.name}`} title={t('favLogoRemove')} onClick={() => remove(f.id)}>
-                <CloseIcon width={12} height={12} />
-              </button>
+              {!sel.editing && (
+                <button type="button" className="fav-logo-remove" aria-label={`${t('favLogoRemove')}: ${f.name}`} title={t('favLogoRemove')} onClick={() => remove(f.id)}>
+                  <CloseIcon width={12} height={12} />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
+      <FavEditBar sel={sel} ids={favs.map((f) => f.id)} onDelete={removeMany} confirmClear={t('favClearLogosConfirm')} />
     </div>
   );
 }

@@ -3,7 +3,8 @@ import { haptic } from '../lib/telegram';
 import { useEditor } from '../state/store';
 import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { CloseIcon, StarIcon } from './icons';
+import { FavEditBar, FavEditToggle, useFavSelection } from './FavEdit';
+import { CheckIcon, CloseIcon, StarIcon } from './icons';
 
 /**
  * Favourite colours at hand: a strip above the panel. Drag a colour onto any colour circle, or tap it and then
@@ -36,11 +37,19 @@ export function FavColorBar() {
   const favs = useEditor((s) => s.favColors);
   const paint = useUi((u) => u.paintColor);
   const setPaint = useUi((u) => u.setPaintColor);
+  const removeFavColors = useEditor((s) => s.removeFavColors);
   const [drag, setDrag] = useState<{ color: string; x: number; y: number } | null>(null);
+  const sel = useFavSelection();
   if (!favs.length) return null;
 
   const start = (color: string, e: React.PointerEvent) => {
     if (e.button > 0) return;
+    // Editing: taps select colours to delete.
+    if (sel.editing) {
+      e.preventDefault();
+      sel.toggle(color);
+      return;
+    }
     e.preventDefault();
     const x0 = e.clientX;
     const y0 = e.clientY;
@@ -88,30 +97,48 @@ export function FavColorBar() {
   };
 
   return (
-    <section className="fav-colors" aria-label={t('favColorsBar')}>
-      <span className="label">
-        <StarIcon width={14} height={14} filled /> {t('favColorsBar')}
-      </span>
+    <section className={`fav-colors${sel.editing ? ' is-editing' : ''}`} aria-label={t('favColorsBar')}>
+      <div className="fav-head">
+        <span className="label">
+          <StarIcon width={14} height={14} filled /> {t('favColorsBar')}
+        </span>
+        <FavEditToggle
+          sel={{
+            ...sel,
+            start: () => {
+              setPaint(null);
+              sel.start();
+            },
+          }}
+        />
+      </div>
       <div className="fav-colors-row">
         {favs.map((c, i) => (
           <button
             key={c}
             type="button"
-            className={`fav-color${paint === c ? ' is-armed' : ''}`}
+            className={`fav-color${paint === c ? ' is-armed' : ''}${sel.selected.has(c) ? ' is-selected' : ''}`}
             style={{ background: c, '--i': i } as React.CSSProperties}
-            aria-pressed={paint === c}
+            aria-pressed={sel.editing ? sel.selected.has(c) : paint === c}
             aria-label={`${t('favColorsBar')}: ${c}`}
             title={c}
             onPointerDown={(e) => start(c, e)}
             onKeyDown={(e) => {
               if (e.key !== 'Enter' && e.key !== ' ') return;
               e.preventDefault();
-              setPaint(paint === c ? null : c);
+              if (sel.editing) sel.toggle(c);
+              else setPaint(paint === c ? null : c);
             }}
-          />
+          >
+            {sel.selected.has(c) && <CheckIcon width={16} height={16} strokeWidth={3.5} className="fav-check" />}
+          </button>
         ))}
       </div>
-      <p className="hint">{t('favColorsHint')}</p>
+      {sel.editing ? (
+        <FavEditBar sel={sel} ids={favs} onDelete={removeFavColors} confirmClear={t('favClearColorsConfirm')} />
+      ) : (
+        <p className="hint">{t('favColorsHint')}</p>
+      )}
       {drag && <span className="color-ghost" style={{ background: drag.color, transform: `translate(${drag.x - 22}px, ${drag.y - 22}px)` }} aria-hidden />}
     </section>
   );

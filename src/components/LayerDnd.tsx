@@ -5,7 +5,8 @@ import type { Part } from '../lottie/parts';
 import { useEditor, type FavLogo, type ImportedTemplate } from '../state/store';
 import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { StarIcon } from './icons';
+import { FavEditBar, FavEditToggle, useFavSelection } from './FavEdit';
+import { CheckIcon, StarIcon } from './icons';
 
 /**
  * Drag and drop in the layer list (finger or mouse): favourite logos from the strip above the list, and
@@ -170,39 +171,56 @@ export function DragGhost({ drag }: { drag: DragState | null }) {
 export function FavLogoStrip({ imp, onStart }: { imp: ImportedTemplate; onStart: (source: DragSource, e: React.PointerEvent, onTap?: () => void) => void }) {
   const t = useT();
   const favs = useEditor((s) => s.favLogos);
+  const removeMany = useEditor((s) => s.removeFavLogos);
+  const sel = useFavSelection();
   if (!favs.length) return <p className="hint">{t('favLayersEmpty')}</p>;
   return (
-    <div className="fav-strip">
-      <span className="label">
-        <StarIcon width={14} height={14} filled /> {t('favorites')}
-      </span>
+    <div className={`fav-strip${sel.editing ? ' is-editing' : ''}`}>
+      <div className="fav-head">
+        <span className="label">
+          <StarIcon width={14} height={14} filled /> {t('favorites')}
+        </span>
+        <FavEditToggle sel={sel} />
+      </div>
       <div className="fav-chips">
         {favs.map((f) => (
           <button
             key={f.id}
             type="button"
-            className="fav-chip"
+            className={`fav-chip${sel.selected.has(f.id) ? ' is-selected' : ''}`}
             title={f.name}
-            aria-label={`${t('layerAddLogo')}: ${f.name}`}
-            onPointerDown={(e) =>
+            aria-pressed={sel.editing ? sel.selected.has(f.id) : undefined}
+            aria-label={`${sel.editing ? t('favEdit') : t('layerAddLogo')}: ${f.name}`}
+            onPointerDown={(e) => {
+              if (sel.editing) {
+                e.preventDefault();
+                sel.toggle(f.id);
+                return;
+              }
               onStart({ kind: 'logo', logo: f }, e, () => {
                 const key = useEditor.getState().putLayoutSvg(f.svg);
                 applyLayerOp(imp, { kind: 'insert', svg: key, name: `${INSERTED}${f.name}`, at: { parent: '', index: 0 } });
-              })
-            }
+              });
+            }}
             onKeyDown={(e) => {
               if (e.key !== 'Enter' && e.key !== ' ') return;
               e.preventDefault();
+              if (sel.editing) return sel.toggle(f.id);
               const key = useEditor.getState().putLayoutSvg(f.svg);
               applyLayerOp(imp, { kind: 'insert', svg: key, name: `${INSERTED}${f.name}`, at: { parent: '', index: 0 } });
             }}
           >
             <img src={svgUrl(f.svg)} alt="" draggable={false} />
             <span>{f.name}</span>
+            {sel.selected.has(f.id) && <CheckIcon width={14} height={14} strokeWidth={3.5} className="fav-check" />}
           </button>
         ))}
       </div>
-      <p className="hint">{t('favDragHint')}</p>
+      {sel.editing ? (
+        <FavEditBar sel={sel} ids={favs.map((f) => f.id)} onDelete={removeMany} confirmClear={t('favClearLogosConfirm')} />
+      ) : (
+        <p className="hint">{t('favDragHint')}</p>
+      )}
     </div>
   );
 }

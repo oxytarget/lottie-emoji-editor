@@ -37,6 +37,7 @@ interface TelegramWebApp {
   MainButton?: NativeButton;
   BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   isVersionAtLeast?(version: string): boolean;
+  showConfirm?(message: string, callback: (ok: boolean) => void): void;
   openLink?(url: string): void;
   openTelegramLink?(url: string): void;
   HapticFeedback?: { selectionChanged(): void; impactOccurred(style: string): void };
@@ -163,6 +164,21 @@ export function useBackButton(visible: boolean, onBack: () => void): void {
       button.hide();
     };
   }, [button, visible]);
+}
+
+/** Asks for confirmation — Telegram's own dialog in the Mini App, the browser's elsewhere. */
+export function confirmAction(message: string): Promise<boolean> {
+  const app = webApp();
+  if (app?.showConfirm) {
+    return new Promise((resolve) => {
+      try {
+        app.showConfirm!(message, (ok) => resolve(!!ok));
+      } catch {
+        resolve(window.confirm(message));
+      }
+    });
+  }
+  return Promise.resolve(window.confirm(message));
 }
 
 export function haptic(): void {
