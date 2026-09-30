@@ -184,4 +184,17 @@ describe('compileAll', () => {
     // Dropped animations are forgotten.
     expect(compiler.compile({ ...input, imports: [{ ...input.imports[0], data: undefined }] }, []).some((o) => o.id === 'pack:x:1')).toBe(false);
   });
+
+  it('puts the user content in once: a replaced part wins over the copy on top', async () => {
+    const { compileOne } = await import('../state/compile');
+    const b = base();
+    const data = compose(base(BUILTIN_TEMPLATES[1]));
+    const input = { art: b.art, artStyle: b.artStyle, colors: b.colors, outlineWidth: 12, scale: 1, offsetY: 0, offsetX: 0, rotation: 0 };
+    const count = (json: string) => (json.match(/emoji-content/g) ?? []).length;
+    const both = compileOne({ ...input, imports: [{ id: 'i', data, colorMap: {}, overlay: true, hidden: [], replace: 'l1', transforms: {} }] }, 'i')!;
+    const onTop = compileOne({ ...input, imports: [{ id: 'i', data, colorMap: {}, overlay: true, hidden: [], replace: null, transforms: {} }] }, 'i')!;
+    // The source already has one content group (it was made by this app): replacing keeps one, overlay adds one.
+    expect(count(both)).toBe(1);
+    expect(count(onTop)).toBe(2);
+  });
 });

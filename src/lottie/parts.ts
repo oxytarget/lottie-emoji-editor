@@ -170,11 +170,18 @@ function looksLikeText(name: string, contours: number, box: BBox | null): boolea
   return !!box && contours >= 5 && box.w > box.h * 1.4;
 }
 
-/** Collapses single wrapper groups (common in After Effects exports) so the meaningful groups are listed. */
+/** Name prefix of logos inserted from Favourites in the layer list (see layout.ts). */
+export const INSERTED = '★ ';
+const isInserted = (p: Part) => p.name.startsWith(INSERTED);
+
+/**
+ * Collapses single wrapper groups (common in After Effects exports) so the meaningful groups are listed.
+ * Logos inserted by the user are always listed.
+ */
 function unwrap(groups: Part[]): Part[] {
   let list = groups;
-  while (list.length === 1 && list[0].children.length > 1) list = list[0].children;
-  return list.length > 1 ? list : [];
+  while (list.length === 1 && list[0].children.length > 1 && !isInserted(list[0])) list = list[0].children;
+  return list.length > 1 || (list.length === 1 && isInserted(list[0])) ? list : [];
 }
 
 function groupParts(items: readonly ShapeItem[], prefix: string, groupDepth: number): Part[] {
@@ -1012,3 +1019,7 @@ export function partSvg(anim: LottieAnimation, id: string): string | null {
   const defs = ctx.defs.length ? `<defs>${ctx.defs.join('')}</defs>` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${view}">${defs}${ctx.out.join('')}</svg>`;
 }
+
+// Internals shared with the layer-structure editor (layout.ts).
+export type { AnyLayer, Target as PartTarget };
+export { assetsById as assetsOf, itemsBBox as itemsBounds, resolve as resolvePart };

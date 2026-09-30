@@ -3,16 +3,24 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_FONT_ID } from '../content/fonts';
 import { detectLang } from '../i18n';
 import type { Paint } from '../lottie/paint';
+import { extractPalette } from '../lottie/imported';
+import { applyLayoutOp, checkOp, remapEdits, type LayoutOp } from '../lottie/layout';
 import type { PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import type { ColorRole, EmojiColors, Lang } from '../templates/types';
 import { applyImportOp, applyImportOpTo, type ImportOp } from './importOps';
+import { logoArt, svgKey } from './logoArt';
 import { PRESETS, randomEmojiColors, randomTextColors, type ColorPreset } from './presets';
 
 export interface ImportedTemplate {
   id: string;
   name: string;
+  /** The animation as edited in the layer list (`base` with the `layout` operations applied). */
   data: LottieAnimation;
+  /** The animation as imported. */
+  base: LottieAnimation;
+  /** Layer-list edits: inserted logos, moved parts. */
+  layout: LayoutOp[];
   palette: string[];
   colorMap: Record<string, string>;
   overlay: boolean;
@@ -51,7 +59,7 @@ export interface UserPreset extends ColorPreset {
 }
 
 /** User edits of a pack sticker, kept across sessions (the animation itself is not stored). */
-export type PackEdit = Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms'>;
+export type PackEdit = Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms'> & { layout?: LayoutOp[] };
 
 export type PreviewBg = 'light' | 'dark' | 'chess';
 
@@ -99,6 +107,8 @@ export interface EditorData {
   userPresets: UserPreset[];
   /** A big pack being filled in several steps: which emoji are already in it (so it can be finished later). */
   packJob: { pack: string; ids: string[]; created: boolean } | null;
+  /** SVGs of logos inserted in layer lists, by key (layer operations refer to them). */
+  layoutSvgs: Record<string, string>;
 }
 
 export interface EditorActions {
@@ -117,6 +127,10 @@ export interface EditorActions {
    * Returns how many of the other selected animations were changed.
    */
   editImport(id: string, op: ImportOp): { applied: number; total: number };
+  /** Changes the layer structure of an imported animation; returns the new id of the inserted/moved part. */
+  layoutImport(id: string, op: LayoutOp): string | null;
+  /** Stores a logo for layer operations and returns its key. */
+  putLayoutSvg(svg: string): string;
   removeImport(id: string): void;
   /** Adds (or refreshes) the stickers of a pack; `personal` also remembers the pack in "My packs". */
   addPackTemplates(pack: PackRef, templates: ImportedTemplate[], personal: boolean): void;
@@ -173,7 +187,14 @@ export const initialData = (): EditorData => ({
   favLogos: [],
   userPresets: [],
   packJob: null,
+  layoutSvgs: {},
 });
+
+/** Edits of a pack sticker as remembered across sessions. */
+const packEditOf = (t: ImportedTemplate): PackEdit => {
+  const { colorMap, overlay, hidden, replace, transforms, layout } = t;
+  return { colorMap, overlay, hidden, replace, transforms, layout };
+};
 
 /** Limits keep Favourites within the ~5 MB localStorage quota. */
 const MAX_FAV_COLORS = 30;
@@ -214,8 +235,7 @@ export const useEditor = create<EditorData & EditorActions>()(
         const imports = get().imports.map((t) => (t.id === id ? { ...t, ...patch } : t));
         const updated = imports.find((t) => t.id === id);
         if (!updated?.source) return set({ imports });
-        const { colorMap, overlay, hidden, replace, transforms } = updated;
-        set({ imports, packEdits: { ...get().packEdits, [updated.source.uid]: { colorMap, overlay, hidden, replace, transforms } } });
+        set({ imports, packEdits: { ...get().packEdits, [updated.source.uid]: packEditOf(updated) } });
       },
       editImport: (id, op) => {
         const { imports, selected, syncImports, packEdits } = get();
@@ -235,14 +255,39 @@ export const useEditor = create<EditorData & EditorActions>()(
           }
           if (!patch) return t;
           const updated = { ...t, ...patch };
-          if (updated.source) {
-            const { colorMap, overlay, hidden, replace, transforms } = updated;
-            edits[updated.source.uid] = { colorMap, overlay, hidden, replace, transforms };
-          }
+          if (updated.source) edits[updated.source.uid] = packEditOf(updated);
           return updated;
         });
         set({ imports: next, packEdits: edits });
         return { applied, total };
+      },
+      putLayoutSvg: (svg) => {
+        const key = svgKey(svg);
+        if (get().layoutSvgs[key] !== svg) set({ layoutSvgs: { ...get().layoutSvgs, [key]: svg } });
+        return key;
+      },
+      layoutImport: (id, op) => {
+        const { imports, layoutSvgs, packEdits } = get();
+        const t = imports.find((i) => i.id === id);
+        if (!t || checkOp(t.data, op)) return null;
+        const data = structuredClone(t.data);
+        const newId = applyLayoutOp(data, op, (key) => logoArt(layoutSvgs[key]));
+        if (newId === null && op.kind !== 'remove') return null;
+        const { hidden, replace, transforms } = remapEdits({ hidden: t.hidden, replace: t.replace, transforms: t.transforms }, op, t.data);
+        const updated: ImportedTemplate = {
+          ...t,
+          data,
+          layout: [...t.layout, op],
+          hidden,
+          replace,
+          transforms: transforms as Record<string, PartXf>,
+          palette: extractPalette(data),
+        };
+        set({
+          imports: imports.map((i) => (i.id === id ? updated : i)),
+          ...(updated.source ? { packEdits: { ...packEdits, [updated.source.uid]: packEditOf(updated) } } : {}),
+        });
+        return newId;
       },
       addPackTemplates: (pack, templates, personal) => {
         const { imports, myPacks } = get();
@@ -345,11 +390,11 @@ export const useEditor = create<EditorData & EditorActions>()(
       // Packs live in Telegram and Favourites are the user's library, so a reset keeps them
       // (pack stickers stay loaded, with their edits reset).
       reset: () => {
-        const { lang, packs, myPacks, imports, favColors, favLogos, userPresets, packJob } = get();
+        const { lang, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
         const stickers = imports
           .filter((t) => t.source)
-          .map((t) => ({ ...t, colorMap: {}, transforms: {}, ...(t.defaults ?? { hidden: [], replace: null, overlay: false }) }));
-        set({ ...initialData(), lang, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob });
+          .map((t) => ({ ...t, data: t.base, layout: [], colorMap: {}, transforms: {}, ...(t.defaults ?? { hidden: [], replace: null, overlay: false }) }));
+        set({ ...initialData(), lang, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
       },
     }),
     {

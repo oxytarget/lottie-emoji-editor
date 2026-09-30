@@ -176,3 +176,35 @@ export const StarIcon = ({ filled, ...p }: P & { filled?: boolean }) => (
     <path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1.03 6-5.38-2.83-5.38 2.83 1.03-6L3.3 9.6l6-.9z" fill={filled ? 'currentColor' : 'none'} />
   </svg>
 );
+export const GridIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="3.5" width="7" height="7" rx="2" />
+    <rect x="13.5" y="3.5" width="7" height="7" rx="2" />
+    <rect x="3.5" y="13.5" width="7" height="7" rx="2" />
+    <rect x="13.5" y="13.5" width="7" height="7" rx="2" />
+  </svg>
+);
+export const PaletteIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z" />
+    <circle cx="7.5" cy="11" r="1" fill="currentColor" />
+    <circle cx="10" cy="7" r="1" fill="currentColor" />
+    <circle cx="14.5" cy="7" r="1" fill="currentColor" />
+  </svg>
+);
+export const LayersIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3.5l8.5 4.5-8.5 4.5L3.5 8z" />
+    <path d="M3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5" />
+  </svg>
+);
+export const GripIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="9" cy="6" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="6" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="9" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="9" cy="18" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="18" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);

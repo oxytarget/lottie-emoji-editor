@@ -1,7 +1,9 @@
 import { fetchSticker, fetchStickerSet } from '../lib/botApi';
 import { readLottieFile } from '../lottie/export';
 import { extractPalette, normalizeForTgs } from '../lottie/imported';
+import { applyLayout } from '../lottie/layout';
 import { analyzePack } from '../lottie/packs';
+import { logoArt } from './logoArt';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from './store';
 import { useUi } from './ui';
@@ -63,13 +65,20 @@ export async function loadPack(name: string, personal: boolean): Promise<void> {
     const pick = picks[i];
     const defaults = { hidden: pick.hidden, replace: pick.replace, overlay: !pick.replace };
     const saved = edits[item.uid];
+    // Layer-list edits are replayed on the freshly downloaded sticker.
+    const layout = saved?.layout ?? [];
+    const svgs = useEditor.getState().layoutSvgs;
+    const edited = applyLayout(data, layout, (key) => logoArt(svgs[key]));
     return {
       id: packTemplateId(name, item.uid),
       name: `${item.emoji || '⭐'} ${i + 1}`,
-      data,
-      palette: extractPalette(data),
+      data: edited,
+      base: data,
+      layout,
+      palette: extractPalette(edited),
       colorMap: saved?.colorMap ?? {},
-      overlay: saved?.overlay ?? defaults.overlay,
+      // Older saved edits could have both a replaced part and the copy on top: keep only the replaced one.
+      overlay: (saved?.overlay ?? defaults.overlay) && !(saved?.replace ?? defaults.replace),
       hidden: saved?.hidden ?? defaults.hidden,
       replace: saved?.replace ?? defaults.replace,
       transforms: saved?.transforms ?? {},

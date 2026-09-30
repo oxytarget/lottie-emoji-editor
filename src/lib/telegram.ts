@@ -1,4 +1,25 @@
+import { useEffect, useRef } from 'react';
+
 /** Optional Telegram Mini App integration — everything is a no-op in a regular browser. */
+
+interface NativeButton {
+  setParams(params: { text?: string; is_visible?: boolean; is_active?: boolean; color?: string; text_color?: string; has_shine_effect?: boolean }): void;
+  onClick(cb: () => void): void;
+  offClick(cb: () => void): void;
+  hide(): void;
+}
+
+interface ThemeParams {
+  bg_color?: string;
+  secondary_bg_color?: string;
+  section_bg_color?: string;
+  text_color?: string;
+  hint_color?: string;
+  button_color?: string;
+  button_text_color?: string;
+  accent_text_color?: string;
+  destructive_text_color?: string;
+}
 
 interface TelegramWebApp {
   initData?: string;
@@ -8,6 +29,14 @@ interface TelegramWebApp {
   requestWriteAccess?(callback?: (granted: boolean) => void): void;
   setHeaderColor?(color: string): void;
   setBackgroundColor?(color: string): void;
+  setBottomBarColor?(color: string): void;
+  disableVerticalSwipes?(): void;
+  onEvent?(event: string, cb: () => void): void;
+  themeParams?: ThemeParams;
+  colorScheme?: 'light' | 'dark';
+  MainButton?: NativeButton;
+  BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
+  isVersionAtLeast?(version: string): boolean;
   openLink?(url: string): void;
   openTelegramLink?(url: string): void;
   HapticFeedback?: { selectionChanged(): void; impactOccurred(style: string): void };
@@ -39,12 +68,101 @@ export function initTelegram(): Promise<void> {
       const app = webApp();
       app?.ready();
       app?.expand();
-      app?.setHeaderColor?.('#8b5cf6');
+      if (app) {
+        applyTelegramTheme(app);
+        app.onEvent?.('themeChanged', () => applyTelegramTheme(app));
+        // Dragging on the canvas must not pull the Mini App down.
+        try {
+          app.disableVerticalSwipes?.();
+        } catch {
+          /* older clients */
+        }
+      }
       resolve();
     };
     script.onerror = () => resolve();
     document.head.appendChild(script);
   });
+}
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Uses the user's Telegram theme, so the editor looks like part of Telegram in light and dark mode. */
+function applyTelegramTheme(app: TelegramWebApp): void {
+  const p = app.themeParams ?? {};
+  if (!p.bg_color || !p.text_color) return;
+  const root = document.documentElement;
+  const card = p.section_bg_color ?? p.bg_color;
+  const bg = p.secondary_bg_color ?? p.bg_color;
+  const text = p.text_color;
+  const accent = p.button_color ?? p.accent_text_color ?? '#2481cc';
+  const vars: Record<string, string | undefined> = {
+    '--bg': bg,
+    '--card': card,
+    '--text': text,
+    '--muted': p.hint_color,
+    '--accent': accent,
+    '--accent-strong': p.accent_text_color ?? accent,
+    '--on-accent': p.button_text_color,
+    '--accent-soft': `color-mix(in srgb, ${accent} 14%, ${card})`,
+    '--accent-line': `color-mix(in srgb, ${accent} 35%, ${card})`,
+    '--sub': `color-mix(in srgb, ${text} 5%, ${card})`,
+    '--sub-2': `color-mix(in srgb, ${text} 9%, ${card})`,
+    '--line': `color-mix(in srgb, ${text} 12%, ${card})`,
+    '--danger': p.destructive_text_color,
+  };
+  for (const [k, v] of Object.entries(vars)) if (v) root.style.setProperty(k, v);
+  root.style.colorScheme = app.colorScheme ?? '';
+  root.dataset.tg = app.colorScheme ?? 'light';
+  try {
+    if (HEX.test(bg)) {
+      app.setHeaderColor?.(bg);
+      app.setBackgroundColor?.(bg);
+      app.setBottomBarColor?.(bg);
+    }
+  } catch {
+    /* older clients */
+  }
+}
+
+/**
+ * Telegram's own bottom button (where available) for the main action. Returns true when it is used,
+ * so the page can hide its own button.
+ */
+export function useMainButton(opts: { text: string; visible: boolean; enabled: boolean; onClick: () => void }): boolean {
+  const button = webApp()?.MainButton;
+  const handler = useRef(opts.onClick);
+  handler.current = opts.onClick;
+  useEffect(() => {
+    if (!button) return;
+    const click = () => handler.current();
+    button.onClick(click);
+    return () => {
+      button.offClick(click);
+      button.hide();
+    };
+  }, [button]);
+  useEffect(() => {
+    button?.setParams({ text: opts.text, is_visible: opts.visible, is_active: opts.enabled });
+  }, [button, opts.text, opts.visible, opts.enabled]);
+  return !!button;
+}
+
+/** Telegram's Back button in the header while `visible` (e.g. to close a sheet). */
+export function useBackButton(visible: boolean, onBack: () => void): void {
+  const button = webApp()?.BackButton;
+  const handler = useRef(onBack);
+  handler.current = onBack;
+  useEffect(() => {
+    if (!button || !visible) return;
+    const click = () => handler.current();
+    button.onClick(click);
+    button.show();
+    return () => {
+      button.offClick(click);
+      button.hide();
+    };
+  }, [button, visible]);
 }
 
 export function haptic(): void {

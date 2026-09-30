@@ -144,6 +144,8 @@ describe('editing all selected stickers together', () => {
       id: `pack:p:${i}`,
       name: `${i}`,
       data,
+      base: data,
+      layout: [],
       palette: extractPalette(data),
       colorMap: {},
       overlay: false,
@@ -186,14 +188,20 @@ describe('editing all selected stickers together', () => {
       expect(t.hidden).toEqual([]);
     });
 
+    // Content on top instead of the replaced part: never both.
+    edit(id, { kind: 'overlay', value: true });
+    for (const t of useEditor.getState().imports) expect([t.overlay, t.replace]).toEqual([true, null]);
+    edit(id, { kind: 'replace', part: logo });
+    for (const t of useEditor.getState().imports) expect(t.overlay).toBe(false);
     edit(id, { kind: 'overlay', value: true });
     edit(id, { kind: 'partsReset' });
     edit(id, { kind: 'colorsReset' });
-    for (const t of useEditor.getState().imports) {
-      expect(t.overlay).toBe(true);
+    useEditor.getState().imports.forEach((t, i) => {
+      expect(t.replace).toBe(imports[i].replace);
+      expect(t.overlay).toBe(false);
       expect(t.transforms).toEqual({});
       expect(t.colorMap).toEqual({});
-    }
+    });
     // Pack edits are remembered per sticker.
     expect(Object.keys(useEditor.getState().packEdits)).toHaveLength(5);
   });
@@ -265,5 +273,39 @@ describe('parts as SVG logos', () => {
     expect(svg).toContain('stop-color="#0000ff"');
     expect(svgToArt(svg).error).toBeUndefined();
     expect(partSvg(a, 'l1')).toBeNull();
+  });
+});
+
+describe('layer edits in the store', () => {
+  it('inserts a favourite logo into a sticker, keeps its edits pointing at the same parts, and resets', async () => {
+    const { useEditor } = await import('../state/store');
+    const { extractPalette } = await import('../lottie/imported');
+    const data = generatedPack()[0];
+    const replace = flattenParts(listParts(data)).find((p) => p.name === 'content')!.id;
+    useEditor.setState({
+      imports: [{ id: 'pack:p:0', name: '0', data, base: data, layout: [], palette: extractPalette(data), colorMap: {}, overlay: false, hidden: [], replace, transforms: { [replace]: { x: 5, y: 0, scale: 1, rotation: 0 } }, source: { pack: 'p', uid: 'u0', emoji: '⭐' }, defaults: { hidden: [], replace, overlay: false } }],
+      packEdits: {},
+      layoutSvgs: {},
+    });
+    const s = useEditor.getState();
+    const key = s.putLayoutSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#123456"/></svg>');
+    const id = s.layoutImport('pack:p:0', { kind: 'insert', svg: key, name: '★ Mine', at: { parent: '', index: 0 } });
+    expect(id).toBe('l0');
+    const t = useEditor.getState().imports[0];
+    expect(t.data.layers[0].nm).toBe('★ Mine');
+    // The replaced part moved down one place, and so did its transform.
+    const shifted = replace.replace(/^l(\d+)/, (_, n: string) => `l${Number(n) + 1}`);
+    expect(t.replace).toBe(shifted);
+    expect(Object.keys(t.transforms)).toEqual([shifted]);
+    expect(t.palette).toContain('#123456');
+    expect(useEditor.getState().packEdits.u0.layout).toHaveLength(1);
+    // An impossible operation changes nothing.
+    expect(useEditor.getState().layoutImport('pack:p:0', { kind: 'move', part: 'l0', at: { parent: 'l0', index: 0 } })).toBeNull();
+
+    useEditor.getState().editImport('pack:p:0', { kind: 'partsReset' });
+    const reset = useEditor.getState().imports[0];
+    expect(reset.data).toBe(data);
+    expect(reset.layout).toEqual([]);
+    expect(reset.replace).toBe(replace);
   });
 });

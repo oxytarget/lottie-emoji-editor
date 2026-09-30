@@ -6,7 +6,9 @@ import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
 import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, ReplaceIcon, ResetIcon, StarIcon, WarningIcon } from './icons';
+import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
+import { applyLayerOp, DragGhost, FavLogoStrip, useLayerDnd, type DragSource } from './LayerDnd';
+import { checkOp, INSERTED, parentOf, type Drop } from '../lottie/layout';
 import { MotionButton, Slider } from './controls';
 import { LottieView, useInView } from './LottieView';
 
@@ -99,8 +101,46 @@ function PartFavorites({ anim, part }: { anim: LottieAnimation; part: Part }) {
   );
 }
 
+/** Up / down among its siblings, out of its group, and removing a logo inserted from Favourites. */
+function LayerMoves({ imp, part, flat }: { imp: ImportedTemplate; part: Part; flat: readonly Part[] }) {
+  const t = useT();
+  const here = parentOf(part.id);
+  const siblings = flat.filter((p) => parentOf(p.id).parent === here.parent);
+  const at = siblings.findIndex((p) => p.id === part.id);
+  const prev = siblings[at - 1];
+  const next = siblings[at + 1];
+  const move = (drop: Drop | null) => {
+    if (!drop) return;
+    applyLayerOp(imp, { kind: 'move', part: part.id, at: drop });
+  };
+  const upDrop = prev ? { parent: here.parent, index: parentOf(prev.id).index } : null;
+  const downDrop = next ? { parent: here.parent, index: parentOf(next.id).index + 1 } : null;
+  const outDrop = here.parent ? { parent: parentOf(here.parent).parent, index: parentOf(here.parent).index } : null;
+  const ok = (drop: Drop | null) => !!drop && !checkOp(imp.data, { kind: 'move', part: part.id, at: drop });
+  return (
+    <div className="row-actions layer-moves">
+      <button type="button" className="pill-btn is-compact" disabled={!ok(upDrop)} onClick={() => move(upDrop)}>
+        ↑ {t('layerUp')}
+      </button>
+      <button type="button" className="pill-btn is-compact" disabled={!ok(downDrop)} onClick={() => move(downDrop)}>
+        ↓ {t('layerDown')}
+      </button>
+      {outDrop && (
+        <button type="button" className="pill-btn is-compact" disabled={!ok(outDrop)} onClick={() => move(outDrop)}>
+          ⤴ {t('layerOut')}
+        </button>
+      )}
+      {part.name.startsWith(INSERTED) && (
+        <MotionButton motion="wiggle" className="pill-btn is-compact is-danger" icon={<TrashIcon width={16} height={16} />} label={t('layerRemove')} onClick={() => applyLayerOp(imp, { kind: 'remove', part: part.id })}>
+          {t('layerRemove')}
+        </MotionButton>
+      )}
+    </div>
+  );
+}
+
 /** Sliders for a grabbed part — the same move/size/rotation as dragging it on the canvas. */
-function PartControls({ imp, part, anim }: { imp: ImportedTemplate; part: Part; anim: LottieAnimation }) {
+function PartControls({ imp, part, anim, flat }: { imp: ImportedTemplate; part: Part; anim: LottieAnimation; flat: readonly Part[] }) {
   const t = useT();
   const xf = imp.transforms[part.id] ?? NO_XF;
   const set = (patch: Partial<PartXf>) => editImport(imp.id, { kind: 'transform', part: part.id, xf: { ...xf, ...patch } });
@@ -136,6 +176,7 @@ function PartControls({ imp, part, anim }: { imp: ImportedTemplate; part: Part; 
           {t('canvasReset')}
         </MotionButton>
       )}
+      <LayerMoves imp={imp} part={part} flat={flat} />
       <PartFavorites anim={anim} part={part} />
     </li>
   );
@@ -148,6 +189,10 @@ interface RowProps {
   imp: ImportedTemplate;
   expanded: Set<string>;
   grabbed: string | null;
+  flat: readonly Part[];
+  /** Drop indicator for a row while something is dragged ("before", "inside-invalid", …). */
+  dropState(id: string): string | undefined;
+  startDrag(source: DragSource, e: React.PointerEvent): void;
   toggleExpanded(id: string): void;
   toggleHidden(id: string): void;
   toggleReplace(id: string): void;
@@ -155,7 +200,7 @@ interface RowProps {
 }
 
 function PartRow(props: RowProps) {
-  const { part, depth, anim, imp, expanded, grabbed, toggleExpanded, toggleHidden, toggleReplace, toggleGrab } = props;
+  const { part, depth, anim, imp, expanded, grabbed, flat, dropState, startDrag, toggleExpanded, toggleHidden, toggleReplace, toggleGrab } = props;
   const t = useT();
   const hiddenSelf = imp.hidden.includes(part.id);
   const hiddenByParent = imp.hidden.some((h) => isAncestor(h, part.id));
@@ -169,7 +214,11 @@ function PartRow(props: RowProps) {
         className={`part-row${hiddenSelf || hiddenByParent ? ' is-hidden' : ''}${replaced ? ' is-replaced' : ''}${isGrabbed ? ' is-grabbed' : ''}`}
         style={{ '--depth': depth } as React.CSSProperties}
         data-part={part.id}
+        data-drop={dropState(part.id)}
       >
+        <span className="part-grip" title={t('layerDrag')} aria-hidden onPointerDown={(e) => startDrag({ kind: 'part', part }, e)}>
+          <GripIcon width={16} height={16} />
+        </span>
         {part.children.length ? (
           <button type="button" className="part-expand" aria-expanded={open} aria-label={part.name} onClick={() => toggleExpanded(part.id)}>
             <ChevronIcon width={16} height={16} className={open ? '' : 'is-collapsed'} />
@@ -218,7 +267,7 @@ function PartRow(props: RowProps) {
           onClick={() => toggleHidden(part.id)}
         />
       </li>
-      {isGrabbed && <PartControls imp={imp} part={part} anim={anim} />}
+      {isGrabbed && <PartControls imp={imp} part={part} anim={anim} flat={flat} />}
       {open && part.children.map((child) => <PartRow key={child.id} {...props} part={child} depth={depth + 1} />)}
     </>
   );
@@ -257,19 +306,17 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
   const grabbed = grab?.id === imp.id ? grab.part : null;
   const toggleGrab = (id: string) => setGrab(grabbed === id ? null : { id: imp.id, part: id });
   const listRef = useRef<HTMLUListElement>(null);
+  const dnd = useLayerDnd({ imp, parts: flat, listRef });
 
-  // A part grabbed on the canvas: open its branch and scroll the list (not the page) to it.
+  // A part grabbed on the canvas: open its branch and bring its row into view.
   useEffect(() => {
     if (!grabbed) return;
     const ancestors = flat.filter((p) => isAncestor(p.id, grabbed)).map((p) => p.id);
     setExpanded((prev) => (ancestors.every((a) => prev.has(a)) ? prev : new Set([...prev, ...ancestors])));
   }, [grabbed, flat]);
   useEffect(() => {
-    const list = listRef.current;
-    const row = grabbed ? list?.querySelector<HTMLElement>(`[data-part="${CSS.escape(grabbed)}"]`) : null;
-    if (!list || !row) return;
-    const top = list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top - 8;
-    list.scrollTo({ top, behavior: 'smooth' });
+    const row = grabbed ? listRef.current?.querySelector<HTMLElement>(`[data-part="${CSS.escape(grabbed)}"]`) : null;
+    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [grabbed, expanded]);
 
   const edited = imp.hidden.length > 0 || !!imp.replace || Object.keys(imp.transforms).length > 0;
@@ -317,7 +364,8 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
       )}
 
       <p className="hint">{t('partsHint')}</p>
-      <ul className="parts-list" ref={listRef}>
+      <FavLogoStrip imp={imp} onStart={dnd.start} />
+      <ul className="parts-list" ref={listRef} data-drop-end={dnd.dropState('') ?? undefined}>
         {parts.map((p) => (
           <PartRow
             key={p.id}
@@ -327,6 +375,9 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
             imp={imp}
             expanded={expanded}
             grabbed={grabbed}
+            flat={flat}
+            dropState={dnd.dropState}
+            startDrag={dnd.start}
             toggleExpanded={toggleExpanded}
             toggleHidden={toggleHidden}
             toggleReplace={toggleReplace}
@@ -334,6 +385,7 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
           />
         ))}
       </ul>
+      <DragGhost drag={dnd.drag} />
     </div>
   );
 }

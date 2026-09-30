@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { haptic } from '../lib/telegram';
 import { CONTENT_CLASS } from '../lottie/compose';
 import { flattenParts, listParts, NO_XF, PART_CLASS, type PartXf } from '../lottie/parts';
@@ -58,7 +58,7 @@ function SyncBar({ imp }: { imp: ImportedTemplate }) {
   );
 }
 
-function ImportedPanel({ id }: { id: string }) {
+export function ImportedPanel({ id }: { id: string }) {
   const t = useT();
   const imp = useEditor((s) => s.imports.find((i) => i.id === id));
   const remove = useEditor((s) => s.removeImport);
@@ -98,6 +98,111 @@ function ImportedPanel({ id }: { id: string }) {
   );
 }
 
+/** Current frame of the preview, outside React state: only the player re-renders on every frame. */
+function createFrameBus() {
+  let value = { frame: 0, total: 0 };
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    set: (frame: number, total: number) => {
+      if (frame === value.frame && total === value.total) return;
+      value = { frame, total };
+      listeners.forEach((l) => l());
+    },
+    subscribe: (l: () => void) => {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
+  };
+}
+type FrameBus = ReturnType<typeof createFrameBus>;
+
+const SPEEDS = [1, 2, 0.5] as const;
+const FPS = 60;
+
+/** Play/pause, timeline (drag to scrub — playback pauses meanwhile), time and speed. */
+function Player(props: {
+  bus: FrameBus;
+  playing: boolean;
+  setPlaying: (v: boolean) => void;
+  speed: number;
+  setSpeed: (v: number) => void;
+  onSeek: (frame: number) => void;
+}) {
+  const t = useT();
+  const { bus, playing, setPlaying, speed, setSpeed, onSeek } = props;
+  const bg = useEditor((s) => s.previewBg);
+  const setBg = useEditor((s) => s.set);
+  const { frame, total } = useSyncExternalStore(bus.subscribe, bus.get);
+  const resume = useRef(false);
+  const last = Math.max(total - 1, 1);
+  const grab = () => {
+    if (!playing) return;
+    resume.current = true;
+    setPlaying(false);
+  };
+  const release = () => {
+    if (resume.current) setPlaying(true);
+    resume.current = false;
+  };
+  const step = (d: number) => {
+    setPlaying(false);
+    onSeek((Math.round(frame) + d + total) % Math.max(total, 1));
+  };
+  return (
+    <div className="player">
+      <MotionButton
+        motion="pop"
+        className="icon-btn is-round player-play"
+        label={playing ? t('pause') : t('play')}
+        icon={playing ? <PauseIcon /> : <PlayIcon />}
+        onClick={() => setPlaying(!playing)}
+      />
+      <input
+        type="range"
+        className="player-scrub"
+        min={0}
+        max={last}
+        step={1}
+        value={Math.min(Math.round(frame), last)}
+        aria-label={t('timeline')}
+        style={{ '--pct': `${(Math.min(frame, last) / last) * 100}%` } as React.CSSProperties}
+        onPointerDown={grab}
+        onPointerUp={release}
+        onPointerCancel={release}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            step(e.key === 'ArrowLeft' ? -1 : 1);
+          }
+        }}
+        onChange={(e) => onSeek(Number(e.target.value))}
+      />
+      <span className="player-time" aria-live="off">
+        {(frame / FPS).toFixed(1)}
+        <small> / {(total / FPS).toFixed(1)} {t('seconds')}</small>
+      </span>
+      <button
+        type="button"
+        className="player-speed"
+        aria-label={`${t('speed')}: ${speed}×`}
+        title={t('speed')}
+        onClick={() => setSpeed(SPEEDS[(SPEEDS.indexOf(speed as (typeof SPEEDS)[number]) + 1) % SPEEDS.length])}
+      >
+        {speed}×
+      </button>
+      {/* Phones: background switch here (the row with the name is hidden to keep the preview compact). */}
+      <button
+        type="button"
+        className={`player-bg bg-dot bg-${bg}`}
+        aria-label={t('preview')}
+        title={t('preview')}
+        onClick={() => setBg('previewBg', BGS[(BGS.indexOf(bg) + 1) % BGS.length])}
+      />
+    </div>
+  );
+}
+
 const sameXf = (a: ContentXf, b: ContentXf) => a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation;
 const DEFAULT_XF: ContentXf = { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 };
 const toContentXf = (p: PartXf): ContentXf => ({ scale: p.scale, offsetX: p.x, offsetY: p.y, rotation: p.rotation });
@@ -119,6 +224,9 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   const grab = useUi((u) => u.grab);
   const setGrab = useUi((u) => u.setGrab);
   const [playing, setPlaying] = useState(true);
+  const [speed, setSpeed] = useState(1);
+  const [seek, setSeek] = useState<{ frame: number; n: number } | null>(null);
+  const [bus] = useState(createFrameBus);
   const [editing, setEditing] = useState(false);
   const [live, setLive] = useState<{ key: string; xf: ContentXf } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -183,6 +291,8 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
     const at = chain.indexOf(key);
     const next = near && at >= 0 ? chain[(at + 1) % chain.length] : chain[0];
     setGrab(next === CONTENT || !imp ? null : { id: imp.id, part: next });
+    // A grabbed part is also highlighted (with its sliders) in the Layers panel.
+    if (next !== CONTENT && imp) useUi.getState().setTab('parts');
     haptic();
   };
 
@@ -197,7 +307,7 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
       <div className="preview-stage" ref={stageRef}>
         {/* Keyed by template: switching characters cross-fades the stage. */}
         <div key={emoji.id} className="preview-swap">
-          <LottieView json={json} playing={playing && !editing} className="preview-anim" label={name} />
+          <LottieView json={json} playing={playing && !editing} speed={speed} seek={seek} onFrame={bus.set} className="preview-anim" label={name} />
         </div>
         <CanvasEditor
           stage={stageRef}
@@ -230,14 +340,8 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
           </MotionButton>
         )}
       </div>
+      <Player bus={bus} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} onSeek={(frame) => setSeek((v) => ({ frame, n: (v?.n ?? 0) + 1 }))} />
       <div className="preview-bar">
-        <MotionButton
-          motion="pop"
-          className="icon-btn is-round"
-          label={playing ? t('pause') : t('play')}
-          icon={playing ? <PauseIcon /> : <PlayIcon />}
-          onClick={() => setPlaying((p) => !p)}
-        />
         <div className="preview-meta">
           <strong>{name}</strong>
           <span className={emoji.check.ok ? 'hint' : 'hint is-bad'}>
@@ -256,7 +360,6 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
         </span>
         <LottieView json={emoji.json} playing={playing} className="chat-big" />
       </div>
-      {emoji.imported && <ImportedPanel id={emoji.id} />}
     </section>
   );
 }

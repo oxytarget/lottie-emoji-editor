@@ -317,6 +317,30 @@ const dict = {
     ru: 'Этот пак ещё не доделан: в нём уже {done} из {total}. Нажмите «Добавить остальные».',
     en: 'This pack is not finished: {done} of {total} are in it. Press “Add the rest”.',
   },
+  timeline: { uk: 'Таймлайн', ru: 'Таймлайн', en: 'Timeline' },
+  speed: { uk: 'Швидкість', ru: 'Скорость', en: 'Speed' },
+  seconds: { uk: 'с', ru: 'с', en: 's' },
+  tabTemplates: { uk: 'Шаблони', ru: 'Шаблоны', en: 'Templates' },
+  tabContent: { uk: 'Текст', ru: 'Текст', en: 'Text' },
+  tabColors: { uk: 'Кольори', ru: 'Цвета', en: 'Colours' },
+  tabParts: { uk: 'Шари', ru: 'Слои', en: 'Layers' },
+  layerUp: { uk: 'Вище', ru: 'Выше', en: 'Up' },
+  layerDown: { uk: 'Нижче', ru: 'Ниже', en: 'Down' },
+  layerOut: { uk: 'З групи', ru: 'Из группы', en: 'Out of group' },
+  layerRemove: { uk: 'Видалити', ru: 'Удалить', en: 'Delete' },
+  layerDrag: { uk: 'Перетягнути', ru: 'Перетащить', en: 'Drag' },
+  layerAddLogo: { uk: 'Додати лого в анімацію', ru: 'Добавить лого в анимацию', en: 'Add the logo to the animation' },
+  favDragHint: {
+    uk: 'Перетягніть лого між шарами або на шар чи групу — тоді воно рухатиметься разом з нею. Торкніться — додасться зверху. Шари тягніть за ⋮⋮.',
+    ru: 'Перетащите лого между слоями или на слой либо группу — тогда оно будет двигаться вместе с ней. Коснитесь — добавится сверху. Слои тяните за ⋮⋮.',
+    en: 'Drag a logo between layers, or onto a layer or group to move with it. Tap to add it on top. Drag layers by ⋮⋮.',
+  },
+
+  favLayersEmpty: {
+    uk: 'Збережіть лого в «Обране» (вкладка «Текст» → «Лого SVG» або «Лого в обране» тут), щоб перетягувати його в шари.',
+    ru: 'Сохраните лого в «Избранное» (вкладка «Текст» → «Лого SVG» или «Лого в избранное» здесь), чтобы перетаскивать его в слои.',
+    en: 'Save logos to Favourites (the Text tab → SVG logo, or “Logo to favourites” here) to drag them into layers.',
+  },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;

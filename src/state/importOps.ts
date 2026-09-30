@@ -1,3 +1,4 @@
+import { extractPalette } from '../lottie/imported';
 import { matchColors, matchPart } from '../lottie/packs';
 import { isIdentityXf, type PartXf } from '../lottie/parts';
 import type { ImportedTemplate } from './store';
@@ -15,7 +16,7 @@ export type ImportOp =
   | { kind: 'transform'; part: string; xf: PartXf | null }
   | { kind: 'partsReset' };
 
-type Patch = Partial<Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms'>>;
+type Patch = Partial<Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms' | 'data' | 'layout' | 'palette'>>;
 
 const isAncestor = (a: string, b: string) => b.startsWith(`${a}/`) || b.startsWith(`${a}>`);
 
@@ -27,21 +28,25 @@ export function applyImportOp(t: ImportedTemplate, op: ImportOp): Patch {
     case 'colorsReset':
       return { colorMap: {} };
     case 'overlay':
-      return { overlay: op.value };
+      // The content appears once: on top instead of inside a replaced part.
+      return op.value ? { overlay: true, replace: null } : { overlay: false };
     case 'hide': {
       const hidden = op.hidden ? [...new Set([...t.hidden, op.part])] : t.hidden.filter((h) => h !== op.part);
       return { hidden, replace: op.hidden && t.replace === op.part ? null : t.replace };
     }
     case 'replace':
       if (!op.part) return { replace: null };
-      // The replaced part and everything around it must stay visible.
-      return { replace: op.part, hidden: t.hidden.filter((h) => h !== op.part && !isAncestor(h, op.part!)) };
+      // The replaced part and everything around it must stay visible; the copy on top goes away.
+      return { replace: op.part, overlay: false, hidden: t.hidden.filter((h) => h !== op.part && !isAncestor(h, op.part!)) };
     case 'transform': {
       const { [op.part]: _old, ...rest } = t.transforms;
       return { transforms: op.xf && !isIdentityXf(op.xf) ? { ...rest, [op.part]: op.xf } : rest };
     }
-    case 'partsReset':
-      return { hidden: t.defaults?.hidden ?? [], replace: t.defaults?.replace ?? null, transforms: {} };
+    case 'partsReset': {
+      // Back to the imported structure too (inserted logos and moved layers go away).
+      const structure = t.layout.length ? { data: t.base, layout: [], palette: extractPalette(t.base) } : {};
+      return { ...structure, hidden: t.defaults?.hidden ?? [], replace: t.defaults?.replace ?? null, overlay: t.defaults?.overlay ?? false, transforms: {} };
+    }
   }
 }
 

@@ -7,8 +7,13 @@ export type PackStatus =
   | { state: 'ready'; count: number; skipped: number }
   | { state: 'error'; error: 'not-found' | 'empty' | 'network' | 'server' };
 
+export type Tab = 'templates' | 'content' | 'colors' | 'parts';
+
 /** Session-only UI state shared between the grid, the preview and the parts list. */
 interface UiState {
+  /** Editor panel shown under the preview. */
+  tab: Tab;
+  setTab(tab: Tab): void;
   /** Pack sticker tiles currently on screen (only those, plus selected ones, are compiled). */
   visible: ReadonlySet<string>;
   setVisible(id: string, visible: boolean): void;
@@ -30,6 +35,8 @@ interface UiState {
 }
 
 export const useUi = create<UiState>()((set, get) => ({
+  tab: 'templates',
+  setTab: (tab) => set({ tab }),
   visible: new Set(),
   setVisible: (id, visible) => {
     const current = get().visible;

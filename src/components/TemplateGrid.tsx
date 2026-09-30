@@ -242,6 +242,8 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
         id: `import-${Date.now().toString(36)}`,
         name: file.name.replace(/\.(tgs|json)$/i, ''),
         data,
+        base: data,
+        layout: [],
         palette: extractPalette(data),
         colorMap: {},
         overlay: false,

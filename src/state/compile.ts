@@ -46,7 +46,8 @@ function buildImported(input: CompileInput, imp: ImportInput & { data: LottieAni
   const { art, artStyle, scale, offsetY, offsetX, rotation } = input;
   let anim = recolor(imp.data, imp.colorMap);
   anim = applyPartEdits(anim, { hidden: imp.hidden, replace: imp.replace, transforms: imp.transforms, annotate }, { art, artStyle, scale, offsetY, offsetX, rotation });
-  if (imp.overlay && art) anim = withOverlay(anim, { art, artStyle, scale, offsetY, offsetX, rotation });
+  // One copy of the user's content: on top only when no part of the animation is replaced by it.
+  if (imp.overlay && art && !imp.replace) anim = withOverlay(anim, { art, artStyle, scale, offsetY, offsetX, rotation });
   return anim;
 }
 
