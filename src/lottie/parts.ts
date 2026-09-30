@@ -1,6 +1,7 @@
 import { artToShapes, fitArt, type ArtStyle, type VectorArt } from '../content/art';
-import { applyMatrix, contoursBBox, IDENTITY, multiply, rotateMatrix, type Contour } from './bezier';
+import { applyMatrix, contoursBBox, IDENTITY, invert, multiply, rotateMatrix, type Contour } from './bezier';
 import { contentGroup } from './compose';
+import { shapeTransform } from './shapes';
 import type { BBox, Bezier, Layer, LottieAnimation, Matrix, ShapeItem } from './types';
 
 /**
@@ -202,7 +203,8 @@ function layerParts(layers: readonly AnyLayer[], assets: Map<string, Asset>, pre
     const kind = KIND_BY_TYPE[layer.ty as number] ?? 'other';
     const name = typeof layer.nm === 'string' && layer.nm ? layer.nm : `Layer ${idx + 1}`;
     let children: Part[] = [];
-    let detected = kind === 'text' || NAME_HINT.test(name);
+    // Null layers draw nothing, whatever their name says.
+    let detected = kind === 'text' || (kind !== 'null' && NAME_HINT.test(name));
     if (kind === 'shape') {
       const shapes = (layer.shapes ?? []) as ShapeItem[];
       const { box, contours } = itemsBBox(shapes);
@@ -276,9 +278,31 @@ function toNull(list: AnyLayer[], index: number): void {
   (layer as Json).ty = 3;
 }
 
+/** Extra transform of a part, in canvas terms (edited by grabbing the part on the preview). */
+export interface PartXf {
+  /** Move, in canvas pixels. */
+  x: number;
+  y: number;
+  /** Size multiplier around the part's centre. */
+  scale: number;
+  /** Degrees, clockwise. */
+  rotation: number;
+}
+
+export const NO_XF: PartXf = { x: 0, y: 0, scale: 1, rotation: 0 };
+
+export const isIdentityXf = (xf: PartXf | undefined): boolean =>
+  !xf || (Math.abs(xf.x) < 0.01 && Math.abs(xf.y) < 0.01 && Math.abs(xf.scale - 1) < 1e-3 && Math.abs(xf.rotation) < 0.01);
+
+/** SVG class prefix of annotated parts: `pt-N`, N = index in `flattenParts(listParts(anim))`. */
+export const PART_CLASS = 'pt-';
+
 export interface PartEdits {
   hidden: readonly string[];
   replace?: string | null;
+  transforms?: Readonly<Record<string, PartXf>>;
+  /** Tag every part with a `pt-N` class so the preview can tell which part was tapped. */
+  annotate?: boolean;
 }
 
 export interface ReplaceContent {
@@ -338,24 +362,107 @@ function layerBox(layer: AnyLayer, assets: Map<string, Asset>): BBox | null {
   }
 }
 
+interface MovePlan {
+  anchor: [number, number];
+  pos: [number, number];
+  scale: number;
+  rotation: number;
+}
+
+/** Turns a canvas-space move/scale/rotate of a part into a transform in the part's parent space. */
+function movePlan(anim: LottieAnimation, id: string, xf: PartXf): MovePlan | null {
+  const t = partFrame(anim, id) + anim.ip;
+  const box = partBounds(anim, id, t);
+  const parent = parentMatrix(anim, id, t);
+  if (!box || !parent) return null;
+  const inv = invert(parent);
+  const [cx, cy] = applyMatrix(inv, box.x + box.w / 2, box.y + box.h / 2);
+  const dx = inv[0] * xf.x + inv[2] * xf.y;
+  const dy = inv[1] * xf.x + inv[3] * xf.y;
+  const flipped = parent[0] * parent[3] - parent[1] * parent[2] < 0;
+  return { anchor: [cx, cy], pos: [cx + dx, cy + dy], scale: xf.scale, rotation: flipped ? -xf.rotation : xf.rotation };
+}
+
 /**
- * Returns a copy of the animation with parts hidden and (optionally) one part replaced by the user's content.
- * The replaced part keeps its transform, so the new text/logo follows the original motion.
+ * Applies a move plan: groups get wrapped in a group carrying the extra transform; layers get parented
+ * to a new null layer (appended, so part indices and track-matte order stay intact).
+ */
+function applyMove(target: Target, plan: MovePlan): void {
+  const r = (v: number) => Math.round(v * 1000) / 1000;
+  if (target.type === 'group') {
+    target.list[target.index] = {
+      ty: 'gr',
+      nm: 'part-transform',
+      it: [target.group, shapeTransform({ a: plan.anchor.map(r), p: plan.pos.map(r), s: [r(plan.scale * 100), r(plan.scale * 100)], r: r(plan.rotation) })],
+    };
+    return;
+  }
+  const { list, layer } = target;
+  const ind = list.reduce((mx, l) => Math.max(mx, typeof l.ind === 'number' ? l.ind : 0), 0) + 1;
+  const holder: AnyLayer = {
+    ddd: 0,
+    ind,
+    ty: 3,
+    nm: 'part-transform',
+    sr: 1,
+    ks: {
+      o: { a: 0, k: 100 },
+      r: { a: 0, k: r(plan.rotation) },
+      p: { a: 0, k: [r(plan.pos[0]), r(plan.pos[1]), 0] },
+      a: { a: 0, k: [r(plan.anchor[0]), r(plan.anchor[1]), 0] },
+      s: { a: 0, k: [r(plan.scale * 100), r(plan.scale * 100), 100] },
+    },
+    ao: 0,
+    ip: layer.ip,
+    op: layer.op,
+    st: 0,
+    bm: 0,
+  };
+  if (layer.parent !== undefined) holder.parent = layer.parent;
+  layer.parent = ind;
+  list.push(holder);
+}
+
+/**
+ * Returns a copy of the animation with parts hidden, moved, and (optionally) one part replaced by the user's
+ * content. The replaced part keeps its transform, so the new text/logo follows the original motion.
  */
 export function applyPartEdits(anim: LottieAnimation, edits: PartEdits, content?: ReplaceContent): LottieAnimation {
-  if (!edits.hidden.length && !edits.replace) return anim;
+  const moves = Object.entries(edits.transforms ?? {}).filter(([, xf]) => !isIdentityXf(xf));
+  if (!edits.hidden.length && !edits.replace && !moves.length && !edits.annotate) return anim;
+  // Moves are measured on the untouched source.
+  const plans = moves.flatMap(([id, xf]) => {
+    const plan = movePlan(anim, id, xf);
+    return plan ? [{ id, plan }] : [];
+  });
   const copy = structuredClone(anim);
   const assets = assetsById(copy);
 
-  if (edits.replace && content) {
-    const target = resolve(copy, edits.replace);
-    if (target?.type === 'group') {
-      const items = (target.group.it as ShapeItem[]) ?? [];
+  if (edits.annotate) {
+    flattenParts(listParts(copy)).forEach((part, i) => {
+      const target = resolve(copy, part.id);
+      const obj = (target?.type === 'layer' ? target.layer : target?.group) as Json | undefined;
+      if (!obj) return;
+      // Last key, so exports can strip it with a simple pattern (see `stripPartClasses`).
+      delete obj.cl;
+      obj.cl = `${PART_CLASS}${i}`;
+    });
+  }
+
+  // Resolve everything first: wrapping a group for a move changes the paths below it.
+  const hidden = [...new Set(edits.hidden)].filter((id) => id !== edits.replace);
+  const hiddenTargets = hidden.map((id) => resolve(copy, id));
+  const moveTargets = plans.map(({ id, plan }) => ({ target: resolve(copy, id), plan }));
+  const replaceTarget = edits.replace && content ? resolve(copy, edits.replace) : null;
+
+  if (replaceTarget && content) {
+    if (replaceTarget.type === 'group') {
+      const items = (replaceTarget.group.it as ShapeItem[]) ?? [];
       const { box } = itemsBBox(items);
       const tr = items.find((it) => it.ty === 'tr');
-      if (box) target.group.it = [...contentShapes(box, content), ...(tr ? [tr] : [])];
-    } else if (target?.type === 'layer') {
-      const layer = target.layer;
+      if (box) replaceTarget.group.it = [...contentShapes(box, content), ...(tr ? [tr] : [])];
+    } else {
+      const layer = replaceTarget.layer;
       const box = layer.ty === 4 ? itemsBBox((layer.shapes ?? []) as ShapeItem[]).box : layerBox(layer, assets);
       if (box) {
         const shapes = contentShapes(box, content);
@@ -367,13 +474,13 @@ export function applyPartEdits(anim: LottieAnimation, edits: PartEdits, content?
   }
 
   // Layers become nulls and groups are only marked here (removed in one sweep), so part indices stay valid.
-  const hidden = [...new Set(edits.hidden)].filter((id) => id !== edits.replace);
-  for (const id of hidden) {
-    const target = resolve(copy, id);
+  for (const target of hiddenTargets) {
     if (!target) continue;
     if (target.type === 'layer') toNull(target.list, target.index);
     else (target.group as Json).__remove = true;
   }
+  for (const { target, plan } of moveTargets) if (target) applyMove(target, plan);
+
   const sweep = (items: ShapeItem[]): ShapeItem[] =>
     items.filter((it) => !(it as Json).__remove).map((it) => (it.ty === 'gr' ? { ...it, it: sweep((it.it as ShapeItem[]) ?? []) } : it));
   const sweepLayers = (layers: AnyLayer[]) => {
@@ -382,6 +489,11 @@ export function applyPartEdits(anim: LottieAnimation, edits: PartEdits, content?
   sweepLayers(copy.layers as AnyLayer[]);
   for (const a of assets.values()) if (a.layers) sweepLayers(a.layers);
   return copy;
+}
+
+/** Removes the `pt-N` classes added by `annotate` from serialized JSON (they only matter for the preview). */
+export function stripPartClasses(json: string): string {
+  return json.replace(/,"cl":"pt-\d+"/g, '');
 }
 
 /** Static (first-keyframe) matrix of a layer including its parent chain. */
@@ -454,6 +566,137 @@ export function partBounds(anim: LottieAnimation, id: string, t?: number): BBox 
     if (box) contours.push(boxContour(box.x + box.w / 2, box.y + box.h / 2, box.w, box.h, m));
   }
   return contoursBBox(contours);
+}
+
+/** Canvas matrix of the space a part lives in (everything above it, without the part's own transform). */
+export function parentMatrix(anim: LottieAnimation, id: string, t?: number): Matrix | null {
+  const assets = assetsById(anim);
+  const [layerPath, ...groupPath] = id.split('/');
+  const segs = layerPath.split('>');
+  let list = anim.layers as AnyLayer[];
+  let m: Matrix = IDENTITY;
+  let layer: AnyLayer | undefined;
+  for (let s = 0; s < segs.length; s++) {
+    if (layer) {
+      const asset = layer.refId ? assets.get(layer.refId) : undefined;
+      if (!asset?.layers) return null;
+      list = asset.layers;
+    }
+    layer = list[Number(segs[s].slice(1))];
+    if (!layer) return null;
+    if (s === segs.length - 1 && !groupPath.length) {
+      const own = layer;
+      const parent = own.parent !== undefined ? list.find((l) => l.ind === own.parent) : undefined;
+      return parent ? multiply(m, layerMatrix(list, parent, t)) : m;
+    }
+    m = multiply(m, layerMatrix(list, layer, t));
+  }
+  let items = (layer?.shapes ?? []) as ShapeItem[];
+  for (let g = 0; g < groupPath.length; g++) {
+    const grp = items[Number(groupPath[g].slice(1))];
+    if (!grp || grp.ty !== 'gr') return null;
+    items = (grp.it as ShapeItem[]) ?? [];
+    if (g < groupPath.length - 1) m = multiply(m, transformMatrix(items.find((it) => it.ty === 'tr') as Json | undefined, t));
+  }
+  return m;
+}
+
+// ---------------------------------------------------------------------------
+// Geometry signatures (to find the same logo across the stickers of a pack)
+// ---------------------------------------------------------------------------
+
+export interface PartGeometry {
+  /** Structure: number of outlines and segments (+ text/image ids) — equal for the same logo at any size. */
+  key: string;
+  /** Outline end points normalised to the part's bounding box (0…1), for a tolerant comparison. */
+  points: number[];
+  contours: number;
+  segments: number;
+}
+
+/** 53-bit string hash (cyrb53). */
+function hash(str: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+function layerGeometry(layer: AnyLayer, assets: Map<string, Asset>, m: Matrix, contours: Contour[], extra: string[], depth: number): void {
+  switch (layer.ty as number) {
+    case 4:
+      collectContours(((layer.shapes ?? []) as ShapeItem[]).filter((it) => it.ty !== 'tr'), m, contours);
+      break;
+    case 0: {
+      const asset = layer.refId ? assets.get(layer.refId) : undefined;
+      if (!asset?.layers || depth > 4) break;
+      for (const child of asset.layers) {
+        if (child.ty !== 3) layerGeometry(child, assets, multiply(m, layerMatrix(asset.layers, child)), contours, extra, depth + 1);
+      }
+      break;
+    }
+    case 5: {
+      const doc = firstValue<{ t?: string; f?: string }>((layer.t as Json | undefined)?.d) ?? {};
+      extra.push(`T:${doc.t ?? ''}:${doc.f ?? ''}`);
+      break;
+    }
+    case 2: {
+      const asset = layer.refId ? (assets.get(layer.refId) as (Asset & { p?: string; u?: string }) | undefined) : undefined;
+      extra.push(`I:${hash(`${asset?.u ?? ''}${asset?.p ?? ''}`)}`);
+      break;
+    }
+    case 1:
+      extra.push(`S:${layer.sw}x${layer.sh}`);
+      break;
+  }
+}
+
+const MAX_POINTS = 480;
+
+/** Shape of a part regardless of where it is and how big it is — matches the same logo in different stickers. */
+export function partGeometry(anim: LottieAnimation, id: string): PartGeometry | null {
+  const target = resolve(anim, id);
+  if (!target) return null;
+  const contours: Contour[] = [];
+  const extra: string[] = [];
+  if (target.type === 'group') collectContours(((target.group.it as ShapeItem[]) ?? []).filter((it) => it.ty !== 'tr'), IDENTITY, contours);
+  else layerGeometry(target.layer, assetsById(anim), IDENTITY, contours, extra, 0);
+  const box = contoursBBox(contours);
+  const size = box ? Math.max(box.w, box.h) : 0;
+  if (!extra.length && (!box || size <= 0)) return null;
+  const points: number[] = [];
+  let segments = 0;
+  if (box && size > 0) {
+    const all: number[] = [];
+    for (const c of contours) {
+      all.push(c.start[0], c.start[1]);
+      for (const sg of c.segs) all.push(sg[4], sg[5]);
+      segments += c.segs.length;
+    }
+    // Evenly sampled end points keep the comparison cheap for detailed logos.
+    const pairs = all.length / 2;
+    const step = Math.max(1, pairs / (MAX_POINTS / 2));
+    for (let i = 0; i < pairs; i += step) {
+      const j = Math.floor(i) * 2;
+      points.push((all[j] - box.x) / size, (all[j + 1] - box.y) / size);
+    }
+    if (box.w > 0 && box.h > 0) points.push(box.w / size, box.h / size);
+  }
+  const key = `${extra.join('|')}#${contours.map((c) => `${c.closed ? 'c' : 'o'}${c.segs.length}`).join(',')}`;
+  return { key: hash(key), points, contours: contours.length, segments };
+}
+
+/** Same normalised outlines, within `tolerance` of the part size. */
+export function sameGeometry(a: PartGeometry, b: PartGeometry, tolerance = 0.025): boolean {
+  if (a.key !== b.key || a.points.length !== b.points.length) return false;
+  for (let i = 0; i < a.points.length; i++) if (Math.abs(a.points[i] - b.points[i]) > tolerance) return false;
+  return true;
 }
 
 /**

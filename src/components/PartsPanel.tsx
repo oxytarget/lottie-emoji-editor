@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { I18nKey } from '../i18n';
 import { recolor } from '../lottie/imported';
-import { flattenParts, isolatePart, listParts, partFrame, type Part, type PartKind } from '../lottie/parts';
+import { flattenParts, isIdentityXf, isolatePart, listParts, NO_XF, partFrame, type Part, type PartKind, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
+import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { ChevronIcon, EyeIcon, EyeOffIcon, ReplaceIcon, ResetIcon, WarningIcon } from './icons';
-import { MotionButton } from './controls';
+import { ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, ReplaceIcon, ResetIcon, WarningIcon } from './icons';
+import { MotionButton, Slider } from './controls';
 import { LottieView, useInView } from './LottieView';
 
 const KIND_KEYS: Record<PartKind, I18nKey> = {
@@ -40,28 +41,79 @@ function PartThumb({ anim, id }: { anim: LottieAnimation; id: string }) {
   );
 }
 
+/** Sliders for a grabbed part — the same move/size/rotation as dragging it on the canvas. */
+function PartControls({ imp, part }: { imp: ImportedTemplate; part: Part }) {
+  const t = useT();
+  const update = useEditor((s) => s.updateImport);
+  const xf = imp.transforms[part.id] ?? NO_XF;
+  const set = (patch: Partial<PartXf>) => update(imp.id, { transforms: { ...imp.transforms, [part.id]: { ...xf, ...patch } } });
+  const reset = () => {
+    const { [part.id]: _gone, ...rest } = imp.transforms;
+    update(imp.id, { transforms: rest });
+  };
+  return (
+    <li className="part-controls" style={{ '--depth': 0 } as React.CSSProperties}>
+      <div className="slider-grid">
+        <Slider label={t('partX')} value={Math.round(xf.x)} min={-256} max={256} step={1} onChange={(x) => set({ x })} onReset={() => set({ x: 0 })} />
+        <Slider label={t('partY')} value={Math.round(xf.y)} min={-256} max={256} step={1} onChange={(y) => set({ y })} onReset={() => set({ y: 0 })} />
+        <Slider
+          label={t('partSize')}
+          value={Math.round(xf.scale * 100)}
+          min={20}
+          max={300}
+          step={1}
+          format={(v) => `${v}%`}
+          onChange={(v) => set({ scale: v / 100 })}
+          onReset={() => set({ scale: 1 })}
+        />
+        <Slider
+          label={t('partRotation')}
+          value={Math.round(xf.rotation)}
+          min={-180}
+          max={180}
+          step={1}
+          format={(v) => `${v}°`}
+          onChange={(rotation) => set({ rotation })}
+          onReset={() => set({ rotation: 0 })}
+        />
+      </div>
+      {!isIdentityXf(xf) && (
+        <MotionButton motion="spin-back" className="pill-btn is-compact is-pop-in" icon={<ResetIcon width={16} height={16} />} label={t('canvasReset')} onClick={reset}>
+          {t('canvasReset')}
+        </MotionButton>
+      )}
+    </li>
+  );
+}
+
 interface RowProps {
   part: Part;
   depth: number;
   anim: LottieAnimation;
   imp: ImportedTemplate;
   expanded: Set<string>;
+  grabbed: string | null;
   toggleExpanded(id: string): void;
   toggleHidden(id: string): void;
   toggleReplace(id: string): void;
+  toggleGrab(id: string): void;
 }
 
-function PartRow({ part, depth, anim, imp, expanded, toggleExpanded, toggleHidden, toggleReplace }: RowProps) {
+function PartRow(props: RowProps) {
+  const { part, depth, anim, imp, expanded, grabbed, toggleExpanded, toggleHidden, toggleReplace, toggleGrab } = props;
   const t = useT();
   const hiddenSelf = imp.hidden.includes(part.id);
   const hiddenByParent = imp.hidden.some((h) => isAncestor(h, part.id));
   const replaced = imp.replace === part.id;
+  const isGrabbed = grabbed === part.id;
+  const moved = !isIdentityXf(imp.transforms[part.id]);
   const open = expanded.has(part.id);
   return (
     <>
       <li
-        className={`part-row${hiddenSelf || hiddenByParent ? ' is-hidden' : ''}${replaced ? ' is-replaced' : ''}`}
+        className={`part-row${hiddenSelf || hiddenByParent ? ' is-hidden' : ''}${replaced ? ' is-replaced' : ''}${isGrabbed ? ' is-grabbed' : ''}`}
         style={{ '--depth': depth } as React.CSSProperties}
+        data-part={part.id}
       >
         {part.children.length ? (
           <button type="button" className="part-expand" aria-expanded={open} aria-label={part.name} onClick={() => toggleExpanded(part.id)}>
@@ -70,15 +122,25 @@ function PartRow({ part, depth, anim, imp, expanded, toggleExpanded, toggleHidde
         ) : (
           <span className="part-expand" aria-hidden />
         )}
-        <PartThumb anim={anim} id={part.id} />
-        <div className="part-name">
-          <strong title={part.name}>{part.name}</strong>
-          <span className="hint">
-            {t(KIND_KEYS[part.kind])}
-            {part.detected && !replaced && <em className="part-badge">{t('partsBadge')}</em>}
-            {replaced && <em className="part-badge is-accent">{t('partsYours')}</em>}
+        <button
+          type="button"
+          className="part-main"
+          aria-pressed={isGrabbed}
+          title={t('partsGrab')}
+          aria-label={`${t('partsGrab')}: ${part.name}`}
+          onClick={() => toggleGrab(part.id)}
+        >
+          <PartThumb anim={anim} id={part.id} />
+          <span className="part-name">
+            <strong title={part.name}>{part.name}</strong>
+            <span className="hint">
+              {t(KIND_KEYS[part.kind])}
+              {part.detected && !replaced && <em className="part-badge">{t('partsBadge')}</em>}
+              {replaced && <em className="part-badge is-accent">{t('partsYours')}</em>}
+              {moved && <GrabIcon width={12} height={12} className="part-moved" />}
+            </span>
           </span>
-        </div>
+        </button>
         {part.replaceable && (
           <MotionButton
             motion="swap"
@@ -101,20 +163,8 @@ function PartRow({ part, depth, anim, imp, expanded, toggleExpanded, toggleHidde
           onClick={() => toggleHidden(part.id)}
         />
       </li>
-      {open &&
-        part.children.map((child) => (
-          <PartRow
-            key={child.id}
-            part={child}
-            depth={depth + 1}
-            anim={anim}
-            imp={imp}
-            expanded={expanded}
-            toggleExpanded={toggleExpanded}
-            toggleHidden={toggleHidden}
-            toggleReplace={toggleReplace}
-          />
-        ))}
+      {isGrabbed && <PartControls imp={imp} part={part} />}
+      {open && part.children.map((child) => <PartRow key={child.id} {...props} part={child} depth={depth + 1} />)}
     </>
   );
 }
@@ -155,14 +205,43 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
     update(imp.id, { replace: id, hidden: imp.hidden.filter((h) => h !== id && !isAncestor(h, id)) });
   };
 
+  const grab = useUi((u) => u.grab);
+  const setGrab = useUi((u) => u.setGrab);
+  const grabbed = grab?.id === imp.id ? grab.part : null;
+  const toggleGrab = (id: string) => setGrab(grabbed === id ? null : { id: imp.id, part: id });
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // A part grabbed on the canvas: open its branch and scroll the list (not the page) to it.
+  useEffect(() => {
+    if (!grabbed) return;
+    const ancestors = flat.filter((p) => isAncestor(p.id, grabbed)).map((p) => p.id);
+    setExpanded((prev) => (ancestors.every((a) => prev.has(a)) ? prev : new Set([...prev, ...ancestors])));
+  }, [grabbed, flat]);
+  useEffect(() => {
+    const list = listRef.current;
+    const row = grabbed ? list?.querySelector<HTMLElement>(`[data-part="${CSS.escape(grabbed)}"]`) : null;
+    if (!list || !row) return;
+    const top = list.scrollTop + row.getBoundingClientRect().top - list.getBoundingClientRect().top - 8;
+    list.scrollTo({ top, behavior: 'smooth' });
+  }, [grabbed, expanded]);
+
+  const edited = imp.hidden.length > 0 || !!imp.replace || Object.keys(imp.transforms).length > 0;
+  const atDefaults =
+    !!imp.defaults &&
+    Object.keys(imp.transforms).length === 0 &&
+    imp.replace === imp.defaults.replace &&
+    imp.hidden.length === imp.defaults.hidden.length &&
+    imp.hidden.every((h) => imp.defaults!.hidden.includes(h));
+  const resetParts = () => update(imp.id, { hidden: imp.defaults?.hidden ?? [], replace: imp.defaults?.replace ?? null, transforms: {} });
+
   const noContent = !!imp.replace && (mode === 'logo' ? !logo : !text.trim());
 
   return (
     <div className="parts-panel">
       <div className="subcard-head">
         <h3 className="section-title">{t('partsTitle')}</h3>
-        {(imp.hidden.length > 0 || imp.replace) && (
-          <button type="button" className="pill-btn is-compact" onClick={() => update(imp.id, { hidden: [], replace: null })}>
+        {edited && !atDefaults && (
+          <button type="button" className="pill-btn is-compact" onClick={resetParts}>
             <ResetIcon width={16} height={16} /> {t('partsReset')}
           </button>
         )}
@@ -191,7 +270,7 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
       )}
 
       <p className="hint">{t('partsHint')}</p>
-      <ul className="parts-list">
+      <ul className="parts-list" ref={listRef}>
         {parts.map((p) => (
           <PartRow
             key={p.id}
@@ -200,9 +279,11 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
             anim={anim}
             imp={imp}
             expanded={expanded}
+            grabbed={grabbed}
             toggleExpanded={toggleExpanded}
             toggleHidden={toggleHidden}
             toggleReplace={toggleReplace}
+            toggleGrab={toggleGrab}
           />
         ))}
       </ul>

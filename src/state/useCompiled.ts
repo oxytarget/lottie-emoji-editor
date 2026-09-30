@@ -6,8 +6,9 @@ import { textToArt } from '../content/text';
 import type { TgsCheck } from '../lottie/export';
 import { BUILTIN_TEMPLATES } from '../templates/builtin';
 import type { Localized } from '../templates/types';
-import { compileAll, type CompileInput, type CompileOutput } from './compile';
+import { createCompiler, type CompileInput, type CompileOutput } from './compile';
 import { useEditor } from './store';
+import { useUi } from './ui';
 
 export interface CompiledEmoji {
   id: string;
@@ -18,6 +19,10 @@ export interface CompiledEmoji {
   imported: boolean;
   /** Emoji the custom emoji is linked to when added to a pack. */
   emoji: string;
+  /** Preview JSON with part classes (the active imported animation only). */
+  preview?: string;
+  /** Telegram pack the template comes from. */
+  pack?: string;
 }
 
 export interface Compiled {
@@ -48,11 +53,12 @@ function useFont(fontId: string) {
   return { font: state.font, loading: state.id !== id, error: state.error };
 }
 
-type Runner = (input: CompileInput, done: (out: CompileOutput[]) => void) => void;
+type Runner = (input: CompileInput, keep: string[], done: (out: CompileOutput[]) => void) => void;
 
 /**
  * Compiles in a Web Worker, always keeping at most one job in flight and only the newest
- * waiting input — fast typing never queues up stale work. Falls back to the main thread.
+ * waiting input — fast typing never queues up stale work. Imported animations are sent to the
+ * worker once. Falls back to the main thread.
  */
 function useCompileRunner(): Runner {
   const ref = useRef<Runner | null>(null);
@@ -63,16 +69,19 @@ function useCompileRunner(): Runner {
     } catch {
       worker = null;
     }
+    const local = createCompiler();
+    /** Animations the worker already holds (by id → the exact object sent). */
+    const sent = new Map<string, unknown>();
     let busy = false;
     let seq = 0;
-    let queued: { input: CompileInput; done: (out: CompileOutput[]) => void } | null = null;
-    let current: ((out: CompileOutput[]) => void) | null = null;
-    let lastInput: CompileInput | null = null;
+    type Job = { input: CompileInput; keep: string[]; done: (out: CompileOutput[]) => void };
+    let queued: Job | null = null;
+    let current: Job | null = null;
 
-    const runLocal = (input: CompileInput, done: (out: CompileOutput[]) => void) => {
+    const runLocal = ({ input, keep, done }: Job) => {
       busy = true;
       setTimeout(() => {
-        const out = compileAll(input);
+        const out = local.compile(input, keep);
         busy = false;
         done(out);
         flush();
@@ -81,18 +90,27 @@ function useCompileRunner(): Runner {
 
     const flush = () => {
       if (busy || !queued) return;
-      const { input, done } = queued;
+      const job = queued;
       queued = null;
-      if (!worker) return runLocal(input, done);
+      if (!worker) return runLocal(job);
       busy = true;
-      current = done;
-      worker.postMessage({ seq: ++seq, input });
+      current = job;
+      const alive = new Set(job.keep);
+      for (const id of sent.keys()) if (!alive.has(id)) sent.delete(id);
+      const imports = job.input.imports.map((imp) => {
+        if (sent.get(imp.id) === imp.data) return { ...imp, data: undefined };
+        sent.set(imp.id, imp.data);
+        return imp;
+      });
+      worker.postMessage({ seq: ++seq, input: { ...job.input, imports }, keep: job.keep });
     };
 
     if (worker) {
       worker.onmessage = (e: MessageEvent<{ seq: number; output?: CompileOutput[]; error?: string }>) => {
         busy = false;
-        if (e.data.output && current) current(e.data.output);
+        const job = current;
+        current = null;
+        if (e.data.output && job) job.done(e.data.output);
         else if (e.data.error) console.error('Compile failed:', e.data.error);
         flush();
       };
@@ -102,16 +120,15 @@ function useCompileRunner(): Runner {
         worker?.terminate();
         worker = null;
         busy = false;
-        const pendingDone = current;
+        const job = current;
         current = null;
-        if (pendingDone && !queued && lastInput) queued = { input: lastInput, done: pendingDone };
+        if (job && !queued) queued = job;
         flush();
       };
     }
 
-    ref.current = (input, done) => {
-      lastInput = input;
-      queued = { input, done };
+    ref.current = (input, keep, done) => {
+      queued = { input, keep, done };
       flush();
     };
   }
@@ -143,6 +160,25 @@ export function useCompiled(): Compiled {
     return { mode: 'paint', fill: s.textFill, outline: s.textOutline, outlineWidth: s.textOutlineWidth };
   }, [s.mode, s.logoColors, s.logoOutline, s.textFill, s.textOutline, s.textOutlineWidth]);
 
+  // Pack stickers are compiled only while on screen, selected or open in the preview.
+  const visible = useUi((u) => u.visible);
+  const compiledIds = useMemo(
+    () =>
+      s.imports
+        .filter((imp) => !imp.source || visible.has(imp.id) || s.selected.includes(imp.id) || s.active === imp.id)
+        .map((imp) => imp.id)
+        .join('\n'),
+    [s.imports, visible, s.selected, s.active],
+  );
+  const importsInput = useMemo(() => {
+    const ids = new Set(compiledIds.split('\n'));
+    return s.imports
+      .filter((imp) => ids.has(imp.id))
+      .map(({ id, data, colorMap, overlay, hidden, replace, transforms }) => ({ id, data, colorMap, overlay, hidden, replace, transforms }));
+  }, [s.imports, compiledIds]);
+  const keep = useMemo(() => s.imports.map((imp) => imp.id), [s.imports]);
+  const annotate = s.imports.some((imp) => imp.id === s.active) ? s.active : null;
+
   const input: CompileInput = useMemo(
     () => ({
       art,
@@ -153,33 +189,36 @@ export function useCompiled(): Compiled {
       offsetY: s.offsetY,
       offsetX: s.offsetX,
       rotation: s.rotation,
-      imports: s.imports.map(({ id, data, colorMap, overlay, hidden, replace }) => ({ id, data, colorMap, overlay, hidden, replace })),
+      imports: importsInput,
+      annotate,
     }),
-    [art, artStyle, s.colors, s.outlineWidth, s.scale, s.offsetY, s.offsetX, s.rotation, s.imports],
+    [art, artStyle, s.colors, s.outlineWidth, s.scale, s.offsetY, s.offsetX, s.rotation, importsInput, annotate],
   );
 
   const run = useCompileRunner();
-  const [result, setResult] = useState<{ input: CompileInput | null; output: CompileOutput[] }>({ input: null, output: [] });
+  // Results are merged: stickers scrolled away keep their last build until they are shown again.
+  const [result, setResult] = useState<{ input: CompileInput | null; outputs: ReadonlyMap<string, CompileOutput> }>({ input: null, outputs: new Map() });
 
   useEffect(() => {
-    run(input, (output) => setResult({ input, output }));
-  }, [input, run]);
-
-  const names = useMemo(() => {
-    const m = new Map<string, { name: Localized | string; imported: boolean; emoji: string }>();
-    for (const t of BUILTIN_TEMPLATES) m.set(t.id, { name: t.name, imported: false, emoji: t.emoji });
-    for (const i of s.imports) m.set(i.id, { name: i.name, imported: true, emoji: '⭐' });
-    return m;
-  }, [s.imports]);
-
-  const emojis = useMemo(
-    () =>
-      result.output.flatMap((o) => {
-        const meta = names.get(o.id);
-        return meta ? [{ id: o.id, name: meta.name, json: o.json, check: o.check, imported: meta.imported, emoji: meta.emoji }] : [];
+    run(input, keep, (output) =>
+      setResult((prev) => {
+        const alive = new Set([...BUILTIN_TEMPLATES.map((t) => t.id), ...keep]);
+        const outputs = new Map([...prev.outputs].filter(([id]) => alive.has(id)));
+        for (const o of output) outputs.set(o.id, o);
+        return { input, outputs };
       }),
-    [result.output, names],
-  );
+    );
+  }, [input, keep, run]);
+
+  const emojis = useMemo(() => {
+    const list: CompiledEmoji[] = [];
+    const add = (o: CompileOutput | undefined, meta: Omit<CompiledEmoji, 'id' | 'json' | 'check' | 'preview'>) => {
+      if (o) list.push({ id: o.id, json: o.json, check: o.check, preview: o.preview, ...meta });
+    };
+    for (const t of BUILTIN_TEMPLATES) add(result.outputs.get(t.id), { name: t.name, imported: false, emoji: t.emoji });
+    for (const i of s.imports) add(result.outputs.get(i.id), { name: i.name, imported: true, emoji: i.source?.emoji ?? '⭐', pack: i.source?.pack });
+    return list;
+  }, [result.outputs, s.imports]);
   const byId = useMemo(() => new Map(emojis.map((e) => [e.id, e])), [emojis]);
 
   return {

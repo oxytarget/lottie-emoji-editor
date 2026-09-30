@@ -75,3 +75,54 @@ export async function createPack(opts: { title: string; set?: string; items: Arr
     return form;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Sticker packs as templates (public reads through the bot, no Telegram login needed)
+// ---------------------------------------------------------------------------
+
+/** True when a bot backend is configured (packs can be loaded in Telegram and in a browser). */
+export const packsAvailable = (): boolean => !!RAW_API_URL;
+
+/** Pack name from a link (t.me/addstickers/…, t.me/addemoji/…, tg://addstickers?set=…) or a bare name. */
+export function parsePackLink(input: string): string | null {
+  const text = input.trim();
+  const link = /(?:t(?:elegram)?\.me\/|tg:\/\/)add(?:stickers|emoji)(?:\/|\?set=)([A-Za-z0-9_]{1,64})/i.exec(text);
+  if (link) return link[1];
+  return /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(text) ? text : null;
+}
+
+export interface StickerSetInfo {
+  name: string;
+  title: string;
+  items: Array<{ id: string; uid: string; emoji: string }>;
+  /** Video and static stickers (not Lottie). */
+  skipped: number;
+}
+
+export async function fetchStickerSet(name: string): Promise<{ ok: true; data: StickerSetInfo } | { ok: false; error: 'not-found' | 'network' | 'server' }> {
+  try {
+    const res = await fetch(`${BOT_API_URL}/api/stickerset?name=${encodeURIComponent(name)}`);
+    const body = (await res.json().catch(() => ({}))) as Partial<StickerSetInfo> & { error?: string };
+    if (res.ok && body.items) return { ok: true, data: body as StickerSetInfo };
+    return { ok: false, error: res.status === 404 || body.error === 'pack-not-found' ? 'not-found' : 'server' };
+  } catch {
+    return { ok: false, error: 'network' };
+  }
+}
+
+export async function fetchSticker(id: string): Promise<Uint8Array> {
+  const res = await fetch(`${BOT_API_URL}/api/sticker?id=${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`sticker ${res.status}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/** Template packs the bot's admin added for everyone. */
+export async function fetchBotPacks(): Promise<Array<{ name: string; title: string }>> {
+  try {
+    const res = await fetch(`${BOT_API_URL}/api/templates`);
+    const body = (await res.json().catch(() => ({}))) as { packs?: Array<{ name: string; title: string }> };
+    return Array.isArray(body.packs) ? body.packs : [];
+  } catch {
+    return [];
+  }
+}

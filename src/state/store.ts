@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_FONT_ID } from '../content/fonts';
 import { detectLang } from '../i18n';
 import type { Paint } from '../lottie/paint';
+import type { PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import type { ColorRole, EmojiColors, Lang } from '../templates/types';
 import { PRESETS, randomEmojiColors, randomTextColors, type ColorPreset } from './presets';
@@ -18,7 +19,22 @@ export interface ImportedTemplate {
   hidden: string[];
   /** Part replaced by the user's text/logo (keeps that part's animation). */
   replace: string | null;
+  /** Parts moved/resized/rotated on the canvas. */
+  transforms: Record<string, PartXf>;
+  /** Sticker from a Telegram pack (reloaded through the bot on every start). */
+  source?: { pack: string; uid: string; emoji: string };
+  /** What the pack analysis picked — "reset" goes back to it. */
+  defaults?: Pick<ImportedTemplate, 'hidden' | 'replace' | 'overlay'>;
 }
+
+/** Sticker pack used as templates. */
+export interface PackRef {
+  name: string;
+  title: string;
+}
+
+/** User edits of a pack sticker, kept across sessions (the animation itself is not stored). */
+export type PackEdit = Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms'>;
 
 export type PreviewBg = 'light' | 'dark' | 'chess';
 
@@ -56,6 +72,9 @@ export interface EditorData {
   previewBg: PreviewBg;
   imports: ImportedTemplate[];
   packs: SavedPack[];
+  /** Sticker packs the user added as templates. */
+  myPacks: PackRef[];
+  packEdits: Record<string, PackEdit>;
 }
 
 export interface EditorActions {
@@ -70,6 +89,11 @@ export interface EditorActions {
   addImport(t: ImportedTemplate): void;
   updateImport(id: string, patch: Partial<ImportedTemplate>): void;
   removeImport(id: string): void;
+  /** Adds (or refreshes) the stickers of a pack; `personal` also remembers the pack in "My packs". */
+  addPackTemplates(pack: PackRef, templates: ImportedTemplate[], personal: boolean): void;
+  removePack(name: string): void;
+  /** Puts a pack on top of "My packs" (title filled in once it loads). */
+  rememberPack(pack: PackRef): void;
   savePack(pack: SavedPack): void;
   reset(): void;
 }
@@ -102,7 +126,11 @@ export const initialData = (): EditorData => ({
   previewBg: 'light',
   imports: [],
   packs: [],
+  myPacks: [],
+  packEdits: {},
 });
+
+const isSessionOnly = (id: string) => id.startsWith('import-') || id.startsWith('pack:');
 
 /** Logos bigger than this are not written to localStorage (quota is ~5 MB). */
 const MAX_PERSISTED_LOGO = 400_000;
@@ -129,7 +157,37 @@ export const useEditor = create<EditorData & EditorActions>()(
         else set({ selected: selected.filter((s) => s !== id), active: id });
       },
       addImport: (t) => set({ imports: [...get().imports, t], selected: [...get().selected, t.id], active: t.id }),
-      updateImport: (id, patch) => set({ imports: get().imports.map((t) => (t.id === id ? { ...t, ...patch } : t)) }),
+      updateImport: (id, patch) => {
+        const imports = get().imports.map((t) => (t.id === id ? { ...t, ...patch } : t));
+        const updated = imports.find((t) => t.id === id);
+        if (!updated?.source) return set({ imports });
+        const { colorMap, overlay, hidden, replace, transforms } = updated;
+        set({ imports, packEdits: { ...get().packEdits, [updated.source.uid]: { colorMap, overlay, hidden, replace, transforms } } });
+      },
+      addPackTemplates: (pack, templates, personal) => {
+        const { imports, myPacks } = get();
+        const others = imports.filter((t) => t.source?.pack !== pack.name);
+        const known = myPacks.some((p) => p.name === pack.name);
+        set({
+          imports: [...others, ...templates],
+          myPacks: personal ? [pack, ...myPacks.filter((p) => p.name !== pack.name)] : known ? myPacks.map((p) => (p.name === pack.name ? pack : p)) : myPacks,
+        });
+      },
+      rememberPack: (pack) => {
+        const { myPacks } = get();
+        const known = myPacks.find((p) => p.name === pack.name);
+        set({ myPacks: [known ?? pack, ...myPacks.filter((p) => p.name !== pack.name)] });
+      },
+      removePack: (name) => {
+        const { imports, selected, active, myPacks } = get();
+        const gone = new Set(imports.filter((t) => t.source?.pack === name).map((t) => t.id));
+        set({
+          imports: imports.filter((t) => !gone.has(t.id)),
+          myPacks: myPacks.filter((p) => p.name !== name),
+          selected: selected.filter((s) => !gone.has(s)),
+          active: gone.has(active) ? 'classic' : active,
+        });
+      },
       removeImport: (id) => {
         const { imports, selected, active } = get();
         set({
@@ -142,8 +200,14 @@ export const useEditor = create<EditorData & EditorActions>()(
         const others = get().packs.filter((p) => p.name !== pack.name);
         set({ packs: [pack, ...others].slice(0, 20) });
       },
-      // Packs live in Telegram, so a reset keeps the list.
-      reset: () => set({ ...initialData(), lang: get().lang, packs: get().packs }),
+      // Packs live in Telegram, so a reset keeps the lists (pack stickers stay loaded, with their edits reset).
+      reset: () => {
+        const { lang, packs, myPacks, imports } = get();
+        const stickers = imports
+          .filter((t) => t.source)
+          .map((t) => ({ ...t, colorMap: {}, transforms: {}, ...(t.defaults ?? { hidden: [], replace: null, overlay: false }) }));
+        set({ ...initialData(), lang, packs, myPacks, imports: stickers });
+      },
     }),
     {
       name: 'emoji-studio',
@@ -154,9 +218,9 @@ export const useEditor = create<EditorData & EditorActions>()(
         const keep: Partial<EditorData> = {};
         for (const [k, v] of Object.entries(data)) if (typeof v !== 'function') (keep as Record<string, unknown>)[k] = v;
         if (keep.logo && keep.logo.svg.length > MAX_PERSISTED_LOGO) keep.logo = null;
-        // Imported animations are session-only: drop them from the selection.
-        keep.selected = (keep.selected ?? []).filter((id) => !id.startsWith('import-'));
-        if (keep.active?.startsWith('import-')) keep.active = 'classic';
+        // Imported animations and pack stickers are session-only: drop them from the selection.
+        keep.selected = (keep.selected ?? []).filter((id) => !isSessionOnly(id));
+        if (keep.active && isSessionOnly(keep.active)) keep.active = 'classic';
         return keep;
       },
     },

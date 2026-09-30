@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { haptic } from '../lib/telegram';
+import { CONTENT_CLASS } from '../lottie/compose';
+import { flattenParts, listParts, NO_XF, PART_CLASS, type PartXf } from '../lottie/parts';
 import { compileOne, type CompileInput } from '../state/compile';
+import { useUi } from '../state/ui';
 import { CanvasEditor, type ContentXf } from './CanvasEditor';
 import { MotionButton } from './controls';
 import { formatKb } from '../lottie/export';
@@ -8,7 +12,7 @@ import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
-import { PauseIcon, PlayIcon, ResetIcon, TrashIcon } from './icons';
+import { CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, TrashIcon } from './icons';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
 import { emojiName } from './TemplateGrid';
@@ -40,9 +44,11 @@ function ImportedPanel({ id }: { id: string }) {
         <button type="button" className="pill-btn is-compact" onClick={() => update(id, { colorMap: {} })}>
           <ResetIcon width={18} height={18} /> {t('importedReset')}
         </button>
-        <button type="button" className="pill-btn is-compact is-danger" onClick={() => remove(id)}>
-          <TrashIcon width={18} height={18} /> {t('importedRemove')}
-        </button>
+        {!imp.source && (
+          <button type="button" className="pill-btn is-compact is-danger" onClick={() => remove(id)}>
+            <TrashIcon width={18} height={18} /> {t('importedRemove')}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -50,6 +56,10 @@ function ImportedPanel({ id }: { id: string }) {
 
 const sameXf = (a: ContentXf, b: ContentXf) => a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation;
 const DEFAULT_XF: ContentXf = { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 };
+const toContentXf = (p: PartXf): ContentXf => ({ scale: p.scale, offsetX: p.x, offsetY: p.y, rotation: p.rotation });
+const toPartXf = (c: ContentXf): PartXf => ({ x: c.offsetX, y: c.offsetY, scale: c.scale, rotation: c.rotation });
+/** Canvas selection: the user's text/logo or a part of an imported animation. */
+const CONTENT = '@content';
 
 export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | undefined; pending: boolean; input: CompileInput }) {
   const t = useT();
@@ -57,26 +67,44 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   const bg = useEditor((s) => s.previewBg);
   const set = useEditor((s) => s.set);
   const setTransform = useEditor((s) => s.setTransform);
+  const updateImport = useEditor((s) => s.updateImport);
   const scale = useEditor((s) => s.scale);
   const offsetX = useEditor((s) => s.offsetX);
   const offsetY = useEditor((s) => s.offsetY);
   const rotation = useEditor((s) => s.rotation);
+  const imp = useEditor((s) => (emoji?.imported ? s.imports.find((i) => i.id === emoji.id) : undefined));
+  const grab = useUi((u) => u.grab);
+  const setGrab = useUi((u) => u.setGrab);
   const [playing, setPlaying] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [live, setLive] = useState<ContentXf | null>(null);
+  const [live, setLive] = useState<{ key: string; xf: ContentXf } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
   const pendingXf = useRef<ContentXf | null>(null);
+  const lastPick = useRef<{ x: number; y: number } | null>(null);
 
-  const stored = useMemo(() => ({ scale, offsetX, offsetY, rotation }), [scale, offsetX, offsetY, rotation]);
-  const xf = live ?? stored;
+  const parts = useMemo(() => (imp ? flattenParts(listParts(imp.data)) : []), [imp?.data]);
+  const grabbed = imp && grab?.id === imp.id ? parts.findIndex((p) => p.id === grab.part) : -1;
+  const part = grabbed >= 0 ? parts[grabbed] : null;
+  const key = part ? part.id : CONTENT;
+
+  const contentXf = useMemo(() => ({ scale, offsetX, offsetY, rotation }), [scale, offsetX, offsetY, rotation]);
+  const partXf = part && imp ? imp.transforms[part.id] : undefined;
+  const stored = useMemo(() => (part ? toContentXf(partXf ?? NO_XF) : contentXf), [part, partXf, contentXf]);
+  const liveXf = live?.key === key ? live.xf : null;
+  const xf = liveXf ?? stored;
 
   // While dragging, rebuild only the visible animation (on the main thread, once per frame).
-  const liveJson = useMemo(() => (live && emoji ? compileOne({ ...input, ...live }, emoji.id) : null), [live, input, emoji]);
+  const liveJson = useMemo(() => {
+    if (!liveXf || !emoji) return null;
+    if (!part) return compileOne({ ...input, ...liveXf }, emoji.id);
+    const imports = input.imports.map((i) => (i.id === emoji.id ? { ...i, transforms: { ...i.transforms, [part.id]: toPartXf(liveXf) } } : i));
+    return compileOne({ ...input, imports }, emoji.id);
+  }, [liveXf, input, emoji, part]);
   // Keep the instant preview until the full recompile of the committed transform has landed.
   useEffect(() => {
-    if (live && !editing && !pending && sameXf(live, stored)) setLive(null);
-  }, [live, editing, pending, stored]);
+    if (live && (live.key !== key || (!editing && !pending && sameXf(live.xf, stored)))) setLive(null);
+  }, [live, key, editing, pending, stored]);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   const onLive = (next: ContentXf) => {
@@ -84,16 +112,39 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
-      if (pendingXf.current) setLive(pendingXf.current);
+      if (pendingXf.current) setLive({ key, xf: pendingXf.current });
     });
   };
   const onCommit = (next: ContentXf) => {
-    setLive(next);
-    setTransform(next);
+    setLive({ key, xf: next });
+    if (part && imp) updateImport(imp.id, { transforms: { ...imp.transforms, [part.id]: toPartXf(next) } });
+    else setTransform(next);
+  };
+
+  /** Double tap: grab what is under the finger; again on the same spot — the part around it. */
+  const onPick = (x: number, y: number) => {
+    const stage = stageRef.current;
+    if (!stage || !emoji) return;
+    const hit = document.elementsFromPoint(x, y).find((el) => stage.contains(el) && el.closest('svg') && !el.closest('.canvas-editor'));
+    const chain: string[] = [];
+    for (let n: Element | null = hit ?? null; n && n !== stage; n = n.parentElement) {
+      if (n.classList.contains(CONTENT_CLASS) && !chain.includes(CONTENT)) chain.push(CONTENT);
+      for (const c of n.classList) {
+        const m = c.startsWith(PART_CLASS) ? parts[Number(c.slice(PART_CLASS.length))] : undefined;
+        if (m && !chain.includes(m.id)) chain.push(m.id);
+      }
+    }
+    const near = lastPick.current && Math.hypot(lastPick.current.x - x, lastPick.current.y - y) < 24;
+    lastPick.current = { x, y };
+    if (!chain.length) return;
+    const at = chain.indexOf(key);
+    const next = near && at >= 0 ? chain[(at + 1) % chain.length] : chain[0];
+    setGrab(next === CONTENT || !imp ? null : { id: imp.id, part: next });
+    haptic();
   };
 
   if (!emoji) return null;
-  const json = liveJson ?? emoji.json;
+  const json = liveJson ?? emoji.preview ?? emoji.json;
   const moved = !sameXf(xf, DEFAULT_XF);
   const name = emojiName(emoji.name, lang);
   const bgLabel = { light: t('bgLight'), dark: t('bgDark'), chess: t('bgChess') };
@@ -105,11 +156,31 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
         <div key={emoji.id} className="preview-swap">
           <LottieView json={json} playing={playing && !editing} className="preview-anim" label={name} />
         </div>
-        <CanvasEditor stage={stageRef} value={xf} onLive={onLive} onCommit={onCommit} onActive={setEditing} />
+        <CanvasEditor
+          stage={stageRef}
+          target={part ? `${PART_CLASS}${grabbed}` : CONTENT_CLASS}
+          value={xf}
+          onLive={onLive}
+          onCommit={onCommit}
+          onActive={setEditing}
+          onPick={onPick}
+        />
         {pending && <span className="preview-busy" aria-hidden />}
       </div>
       <div className="canvas-tools">
-        <span className="hint">{t('canvasHint')}</span>
+        {part ? (
+          <span className="grab-chip is-pop-in" role="status">
+            <GrabIcon width={16} height={16} />
+            <span>
+              {t('grabbed')}: <strong>{part.name}</strong>
+            </span>
+            <button type="button" className="grab-release" aria-label={t('grabRelease')} title={t('grabRelease')} onClick={() => setGrab(null)}>
+              <CloseIcon width={14} height={14} />
+            </button>
+          </span>
+        ) : (
+          <span className="hint">{emoji.imported ? t('canvasHintParts') : t('canvasHint')}</span>
+        )}
         {moved && (
           <MotionButton motion="spin-back" className="pill-btn is-compact is-pop-in" icon={<ResetIcon width={16} height={16} />} label={t('canvasReset')} onClick={() => onCommit(DEFAULT_XF)}>
             {t('canvasReset')}

@@ -1,11 +1,13 @@
 /// <reference lib="webworker" />
-import { compileAll, type CompileInput } from './compile';
+import { createCompiler, type CompileInput } from './compile';
 
-// Runs the heavy part (building 20+ animations, JSON + gzip for sizes) off the main thread.
-self.onmessage = (e: MessageEvent<{ seq: number; input: CompileInput }>) => {
-  const { seq, input } = e.data;
+const compiler = createCompiler();
+
+// Runs the heavy part (building the animations, JSON + gzip for sizes) off the main thread.
+self.onmessage = (e: MessageEvent<{ seq: number; input: CompileInput; keep?: string[] }>) => {
+  const { seq, input, keep } = e.data;
   try {
-    self.postMessage({ seq, output: compileAll(input) });
+    self.postMessage({ seq, output: compiler.compile(input, keep) });
   } catch (err) {
     self.postMessage({ seq, error: err instanceof Error ? err.message : String(err) });
   }

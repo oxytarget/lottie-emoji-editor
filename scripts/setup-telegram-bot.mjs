@@ -50,31 +50,37 @@ async function call(method, params = {}) {
 const TEXTS = {
   uk: {
     command: 'Відкрити редактор емодзі',
+    templates: 'Шаблони бота',
     short: 'Створюйте анімовані емодзі для Telegram з тексту або SVG-логотипа.',
     description:
       'Emoji Studio — редактор анімованих емодзі для Telegram.\n\n' +
       '• Текст або ваш SVG-логотип\n' +
       '• 22 анімовані персонажі, кольори та градієнти\n' +
+      '• Готові паки як шаблони: надішліть стікер з паку — лого в ньому заміниться вашим\n' +
       '• Експорт у .tgs — готово для @Stickers\n\n' +
       'Натисніть кнопку «Emoji Studio» внизу, щоб відкрити редактор.',
   },
   ru: {
     command: 'Открыть редактор эмодзи',
+    templates: 'Шаблоны бота',
     short: 'Создавайте анимированные эмодзи для Telegram из текста или SVG-логотипа.',
     description:
       'Emoji Studio — редактор анимированных эмодзи для Telegram.\n\n' +
       '• Текст или ваш SVG-логотип\n' +
       '• 22 анимированных персонажа, цвета и градиенты\n' +
+      '• Готовые паки как шаблоны: пришлите стикер из пака — лого в нём заменится вашим\n' +
       '• Экспорт в .tgs — готово для @Stickers\n\n' +
       'Нажмите кнопку «Emoji Studio» внизу, чтобы открыть редактор.',
   },
   en: {
     command: 'Open the emoji editor',
+    templates: 'Bot templates',
     short: 'Make animated Telegram emoji from text or an SVG logo.',
     description:
       'Emoji Studio — an editor for animated Telegram emoji.\n\n' +
       '• Text or your own SVG logo\n' +
       '• 22 animated characters, colors and gradients\n' +
+      '• Ready-made packs as templates: send a sticker from a pack and its logo becomes yours\n' +
       '• Export to .tgs — ready for @Stickers\n\n' +
       'Tap the “Emoji Studio” button below to open the editor.',
   },
@@ -100,7 +106,11 @@ async function main() {
 
   for (const [language_code, t] of LOCALES) {
     const lang = language_code ? { language_code } : {};
-    await call('setMyCommands', { commands: [{ command: 'start', description: t.command }], ...lang });
+    const commands = [
+      { command: 'start', description: t.command },
+      { command: 'templates', description: t.templates },
+    ];
+    await call('setMyCommands', { commands, ...lang });
     await call('setMyShortDescription', { short_description: t.short, ...lang });
     await call('setMyDescription', { description: t.description, ...lang });
     console.log(`✓ Commands and descriptions (${language_code || 'default'})`);

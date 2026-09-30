@@ -134,3 +134,66 @@ export function withOverlay(anim: LottieAnimation, overlay: OverlayInput): Lotti
   };
   return { ...anim, layers: [layer, ...anim.layers] };
 }
+
+/**
+ * Brings a foreign animation to Telegram's sticker format: 60 fps (all times rescaled) and a 512×512 canvas
+ * (custom emoji packs use 100×100 — the scene is scaled by a parent null layer, geometry stays untouched).
+ */
+export function normalizeForTgs(anim: LottieAnimation, size = 512): LottieAnimation {
+  return fitCanvas(to60fps(anim), size);
+}
+
+export function to60fps(anim: LottieAnimation): LottieAnimation {
+  const fr = anim.fr;
+  if (!(fr > 0) || Math.abs(fr - 60) < 0.01) return anim;
+  const f = 60 / fr;
+  const copy = structuredClone(anim);
+  const times = (l: Json) => {
+    for (const key of ['ip', 'op', 'st']) if (typeof l[key] === 'number') l[key] = (l[key] as number) * f;
+  };
+  times(copy);
+  for (const l of copy.layers) times(l);
+  for (const a of copy.assets ?? []) if (isObj(a) && Array.isArray(a.layers)) for (const l of a.layers) if (isObj(l)) times(l);
+  // Keyframes: any `k` array of objects with a numeric `t` (properties, shapes, text documents…).
+  visit(copy, (obj) => {
+    const k = obj.k;
+    if (Array.isArray(k) && k.length && isObj(k[0]) && typeof k[0].t === 'number') {
+      for (const kf of k) if (isObj(kf) && typeof kf.t === 'number') kf.t *= f;
+    }
+  });
+  if (Array.isArray(copy.markers)) {
+    for (const m of copy.markers) {
+      if (isObj(m) && typeof m.tm === 'number') m.tm *= f;
+      if (isObj(m) && typeof m.dr === 'number') m.dr *= f;
+    }
+  }
+  copy.fr = 60;
+  return copy;
+}
+
+export function fitCanvas(anim: LottieAnimation, size = 512): LottieAnimation {
+  if (anim.w === size && anim.h === size) return anim;
+  const k = size / Math.max(anim.w, anim.h);
+  const rootInd = anim.layers.reduce((m, l) => Math.max(m, typeof l.ind === 'number' ? l.ind : 0), 0) + 1;
+  const root: Layer = {
+    ddd: 0,
+    ind: rootInd,
+    ty: 3,
+    nm: 'canvas',
+    sr: 1,
+    ks: {
+      o: { a: 0, k: 100 },
+      r: { a: 0, k: 0 },
+      p: { a: 0, k: [(size - anim.w * k) / 2, (size - anim.h * k) / 2, 0] },
+      a: { a: 0, k: [0, 0, 0] },
+      s: { a: 0, k: [k * 100, k * 100, 100] },
+    },
+    ao: 0,
+    ip: anim.ip,
+    op: anim.op,
+    st: 0,
+    bm: 0,
+  };
+  const layers = anim.layers.map((l) => (l.parent === undefined ? { ...l, parent: rootInd } : l));
+  return { ...anim, w: size, h: size, layers: [...layers, root] };
+}

@@ -5,6 +5,8 @@ export interface Env {
   APP_URL: string;
   ALLOWED_ORIGINS?: string;
   TELEGRAM_API?: string;
+  /** Telegram user ids (comma separated) allowed to add template packs for everyone. */
+  ADMIN_IDS?: string;
 }
 
 export class TelegramError extends Error {
@@ -25,7 +27,7 @@ export function corsHeaders(req: Request, env: Env): Record<string, string> {
   if (!origin || !allowed.includes(origin)) return {};
   return {
     'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'POST, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
     'access-control-allow-headers': 'content-type',
     'access-control-max-age': '86400',
     vary: 'origin',
@@ -36,8 +38,13 @@ export function json(body: unknown, status: number, headers: Record<string, stri
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...headers } });
 }
 
+const apiBase = (env: Env) => (env.TELEGRAM_API ?? 'https://api.telegram.org').replace(/\/$/, '');
+
+/** Download URL of a file from getFile (contains the token — never hand it to clients). */
+export const telegramFileUrl = (env: Env, path: string): string => `${apiBase(env)}/file/bot${env.TELEGRAM_BOT_TOKEN}/${path}`;
+
 export async function telegram(env: Env, method: string, body: FormData | Record<string, unknown>): Promise<unknown> {
-  const base = (env.TELEGRAM_API ?? 'https://api.telegram.org').replace(/\/$/, '');
+  const base = apiBase(env);
   const init: RequestInit =
     body instanceof FormData
       ? { method: 'POST', body }

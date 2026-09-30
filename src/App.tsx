@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ColorsCard } from './components/ColorsCard';
 import { ContentCard } from './components/ContentCard';
 import { ExportSheet } from './components/ExportSheet';
@@ -7,8 +7,11 @@ import { DownloadIcon, ResetIcon } from './components/icons';
 import { Bump, usePresence, useSlidingIndicator } from './components/motion';
 import { PreviewCard } from './components/PreviewCard';
 import { TemplateGrid } from './components/TemplateGrid';
+import { fetchBotPacks, packsAvailable } from './lib/botApi';
 import { paintCss } from './lottie/paint';
+import { openPack } from './state/packs';
 import { useEditor } from './state/store';
+import { useUi } from './state/ui';
 import { useCompiled } from './state/useCompiled';
 import { useT } from './state/useT';
 import type { Lang } from './templates/types';
@@ -42,9 +45,25 @@ function SummaryBar({ selectedCount }: { selectedCount: number }) {
   );
 }
 
+/** Loads the bot's template packs and a pack passed by the bot as `?pack=<name>`. */
+function usePackBootstrap() {
+  useEffect(() => {
+    if (!packsAvailable()) return;
+    fetchBotPacks().then((packs) => useUi.getState().setBotPacks(packs));
+    const params = new URLSearchParams(window.location.search);
+    const name = params.get('pack');
+    if (!name || !/^[A-Za-z0-9_]{1,64}$/.test(name)) return;
+    params.delete('pack');
+    const query = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    openPack(name);
+  }, []);
+}
+
 export default function App() {
   const t = useT();
   const compiled = useCompiled();
+  usePackBootstrap();
   const lang = useEditor((s) => s.lang);
   const set = useEditor((s) => s.set);
   const reset = useEditor((s) => s.reset);
@@ -109,7 +128,7 @@ export default function App() {
           <ColorsCard />
         </div>
         <div className="area-grid">
-          <TemplateGrid emojis={compiled.emojis} />
+          <TemplateGrid emojis={compiled.emojis} byId={compiled.byId} />
         </div>
       </main>
 

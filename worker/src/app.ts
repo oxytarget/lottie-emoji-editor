@@ -3,14 +3,28 @@
  *
  *   POST /api/send       — the Mini App uploads exported files; the bot sends them to the user's chat.
  *   POST /api/pack       — the bot creates a custom emoji pack for the user (or adds to one it made before).
- *   POST /api/telegram   — bot webhook: answers /start with a button that opens the editor.
+ *   POST /api/telegram   — bot webhook: /start, and sticker packs sent to the bot (→ editor templates).
+ *   GET  /api/stickerset, /api/sticker, /api/templates — sticker packs as templates (see templates.ts).
  *   GET  /               — health check.
  *
- * Settings: TELEGRAM_BOT_TOKEN (secret), APP_URL, ALLOWED_ORIGINS (comma separated), TELEGRAM_API (optional, for tests).
+ * Settings: TELEGRAM_BOT_TOKEN (secret), APP_URL, ALLOWED_ORIGINS (comma separated), ADMIN_IDS (optional,
+ * Telegram ids allowed to add template packs for everyone), TELEGRAM_API (optional, for tests).
  */
 import { corsHeaders, json, telegram, TelegramError, type Env } from './shared.js';
 import { handlePack } from './packs.js';
 import { pickLang, TEXTS, validateInitData, webhookSecret } from './telegram.js';
+import {
+  handleSticker,
+  handleStickerSet,
+  handleTemplateCallback,
+  handleTemplates,
+  packFromMessage,
+  replyWithHelp,
+  replyWithPack,
+  replyWithTemplates,
+  type CallbackQuery,
+  type Message,
+} from './templates.js';
 
 export type { Env } from './shared.js';
 
@@ -78,7 +92,27 @@ async function handleSend(req: Request, env: Env, cors: Record<string, string>):
 }
 
 interface Update {
-  message?: { chat: { id: number; type: string }; text?: string; from?: { language_code?: string } };
+  message?: Message;
+  callback_query?: CallbackQuery;
+}
+
+async function onMessage(env: Env, msg: Message): Promise<void> {
+  const text = msg.text?.trim() ?? '';
+  const command = /^\/([a-z]+)(?:@\w+)?/i.exec(text)?.[1]?.toLowerCase();
+  if (command === 'start') {
+    const t = TEXTS[pickLang(msg.from?.language_code)];
+    await telegram(env, 'sendMessage', {
+      chat_id: msg.chat.id,
+      text: t.welcome,
+      reply_markup: { inline_keyboard: [[{ text: t.open, web_app: { url: env.APP_URL } }]] },
+    });
+    return;
+  }
+  if (command === 'id') return replyWithHelp(env, msg, 'id');
+  if (command === 'templates') return replyWithTemplates(env, msg);
+  const pack = await packFromMessage(env, msg);
+  if (pack) return replyWithPack(env, msg, pack);
+  if (command === 'help' || text) return replyWithHelp(env, msg, 'help');
 }
 
 async function handleWebhook(req: Request, env: Env): Promise<Response> {
@@ -86,18 +120,11 @@ async function handleWebhook(req: Request, env: Env): Promise<Response> {
     return new Response('forbidden', { status: 403 });
   }
   const update = (await req.json().catch(() => ({}))) as Update;
-  const msg = update.message;
-  if (msg && msg.chat.type === 'private' && msg.text?.startsWith('/start')) {
-    const t = TEXTS[pickLang(msg.from?.language_code)];
-    try {
-      await telegram(env, 'sendMessage', {
-        chat_id: msg.chat.id,
-        text: t.welcome,
-        reply_markup: { inline_keyboard: [[{ text: t.open, web_app: { url: env.APP_URL } }]] },
-      });
-    } catch (err) {
-      console.error('reply failed', err instanceof Error ? err.message : err);
-    }
+  try {
+    if (update.callback_query) await handleTemplateCallback(env, update.callback_query);
+    else if (update.message && update.message.chat.type === 'private') await onMessage(env, update.message);
+  } catch (err) {
+    console.error('update failed', err instanceof Error ? err.message : err);
   }
   // Always 200 so Telegram does not retry the update.
   return new Response('ok');
@@ -112,6 +139,9 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (req.method === 'POST' && url.pathname === '/api/send') return handleSend(req, env, cors);
   if (req.method === 'POST' && url.pathname === '/api/pack') return handlePack(req, env, cors);
   if (req.method === 'POST' && url.pathname === '/api/telegram') return handleWebhook(req, env);
+  if (req.method === 'GET' && url.pathname === '/api/stickerset') return handleStickerSet(url, env);
+  if (req.method === 'GET' && url.pathname === '/api/sticker') return handleSticker(url, env);
+  if (req.method === 'GET' && url.pathname === '/api/templates') return handleTemplates(env);
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/health')) {
     // The numeric bot id (token prefix) is public; it lets setup scripts check the right token is configured.
     const bot = Number(env.TELEGRAM_BOT_TOKEN.split(':')[0]) || null;
@@ -131,5 +161,6 @@ export function envFromProcess(vars: Record<string, string | undefined>): Env {
     APP_URL: vars.APP_URL || DEFAULT_APP_URL,
     ALLOWED_ORIGINS: vars.ALLOWED_ORIGINS || [DEFAULT_ORIGIN, production].filter(Boolean).join(','),
     TELEGRAM_API: vars.TELEGRAM_API,
+    ADMIN_IDS: vars.ADMIN_IDS,
   };
 }

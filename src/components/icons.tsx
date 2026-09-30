@@ -160,3 +160,14 @@ export const ReplaceIcon = (p: P) => (
     <rect x="12.5" y="12.5" width="8" height="8" rx="2" />
   </svg>
 );
+export const StickersIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M7 3.5h8.5a5 5 0 0 1 5 5V13a7.5 7.5 0 0 1-7.5 7.5H7A3.5 3.5 0 0 1 3.5 17V7A3.5 3.5 0 0 1 7 3.5z" />
+    <path d="M20.5 12.5h-3.5a4 4 0 0 0-4 4v4M8.5 10h.01M14 10h.01M8.5 14.5c1 .9 2.2 1.3 3.5 1.2" />
+  </svg>
+);
+export const GrabIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3v18M3 12h18M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5" />
+  </svg>
+);

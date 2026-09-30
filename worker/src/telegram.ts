@@ -84,7 +84,7 @@ export async function webhookSecret(botToken: string): Promise<string> {
   return toHex(digest).slice(0, 48);
 }
 
-type Lang = 'uk' | 'ru' | 'en';
+export type Lang = 'uk' | 'ru' | 'en';
 
 export function pickLang(code: string | undefined): Lang {
   const c = (code ?? '').slice(0, 2).toLowerCase();
@@ -94,17 +94,17 @@ export function pickLang(code: string | undefined): Lang {
 export const TEXTS: Record<Lang, { caption: string; welcome: string; open: string }> = {
   uk: {
     caption: 'Готово! Щоб додати емодзі в Telegram, перешліть ці файли боту @Stickers після команди /newemojipack.',
-    welcome: 'Привіт! Emoji Studio створює анімовані емодзі з тексту або вашого SVG-логотипа.\n\nНатисніть кнопку нижче, налаштуйте емодзі, натисніть «Завантажити» і «Створити емодзі-пак» — я зберу пак і надішлю посилання сюди в чат.',
+    welcome: 'Привіт! Emoji Studio створює анімовані емодзі з тексту або вашого SVG-логотипа.\n\nНатисніть кнопку нижче, налаштуйте емодзі, натисніть «Завантажити» і «Створити емодзі-пак» — я зберу пак і надішлю посилання сюди в чат.\n\nМаєте готовий пак? Надішліть мені стікер чи емодзі з нього або посилання — зроблю з нього шаблони з вашим лого.',
     open: '🎨 Відкрити редактор',
   },
   ru: {
     caption: 'Готово! Чтобы добавить эмодзи в Telegram, перешлите эти файлы боту @Stickers после команды /newemojipack.',
-    welcome: 'Привет! Emoji Studio создаёт анимированные эмодзи из текста или вашего SVG-логотипа.\n\nНажмите кнопку ниже, настройте эмодзи, нажмите «Скачать» и «Создать эмодзи-пак» — я соберу пак и пришлю ссылку сюда в чат.',
+    welcome: 'Привет! Emoji Studio создаёт анимированные эмодзи из текста или вашего SVG-логотипа.\n\nНажмите кнопку ниже, настройте эмодзи, нажмите «Скачать» и «Создать эмодзи-пак» — я соберу пак и пришлю ссылку сюда в чат.\n\nЕсть готовый пак? Пришлите мне стикер или эмодзи из него либо ссылку — сделаю из него шаблоны с вашим лого.',
     open: '🎨 Открыть редактор',
   },
   en: {
     caption: 'Done! To add the emoji to Telegram, forward these files to @Stickers after sending /newemojipack.',
-    welcome: 'Hi! Emoji Studio turns text or your SVG logo into animated emoji.\n\nTap the button below, tune your emoji, press “Download” and “Create emoji pack” — I will build the pack and send you the link here.',
+    welcome: 'Hi! Emoji Studio turns text or your SVG logo into animated emoji.\n\nTap the button below, tune your emoji, press “Download” and “Create emoji pack” — I will build the pack and send you the link here.\n\nHave a ready-made pack? Send me a sticker or emoji from it, or its link — I will turn it into templates with your logo.',
     open: '🎨 Open the editor',
   },
 };

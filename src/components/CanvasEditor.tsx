@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { CONTENT_CLASS } from '../lottie/compose';
 import { useT } from '../state/useT';
 
 /** Transform of the user's text/logo, edited directly on the preview. */
@@ -13,6 +12,8 @@ export interface ContentXf {
 interface Props {
   /** Element that contains the rendered Lottie SVG. */
   stage: React.RefObject<HTMLDivElement | null>;
+  /** SVG class of the element being edited (the user's text/logo or a grabbed part). */
+  target: string;
   value: ContentXf;
   /** Called on every frame while a gesture is running. */
   onLive(xf: ContentXf): void;
@@ -20,12 +21,16 @@ interface Props {
   onCommit(xf: ContentXf): void;
   /** Gesture started/ended — the preview pauses while editing. */
   onActive?(active: boolean): void;
+  /** Double tap / double click on the stage (client coordinates) — used to grab the element under it. */
+  onPick?(x: number, y: number): void;
 }
 
 type Mode = 'move' | 'scale' | 'rotate' | 'pinch' | 'scroll';
 
 interface Gesture {
   mode: Mode;
+  /** Value when the gesture began (a tap that moves nothing commits nothing). */
+  initial: ContentXf;
   start: ContentXf;
   /** Canvas units per screen pixel. */
   k: number;
@@ -50,6 +55,8 @@ function normalize(xf: ContentXf): ContentXf {
   };
 }
 
+const sameXf = (a: ContentXf, b: ContentXf) => a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation;
+
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 const angle = (a: { x: number; y: number }, b: { x: number; y: number }) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
 const mid = (pts: { x: number; y: number }[]) => ({ x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 });
@@ -58,7 +65,7 @@ const mid = (pts: { x: number; y: number }[]) => ({ x: (pts[0].x + pts[1].x) / 2
  * Selection box over the user's text/logo: drag to move, corner handles to resize, top handle to rotate,
  * two fingers to pinch/rotate, mouse wheel to resize, arrow keys to nudge.
  */
-export function CanvasEditor({ stage, value, onLive, onCommit, onActive }: Props) {
+export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive, onPick }: Props) {
   const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -67,6 +74,18 @@ export function CanvasEditor({ stage, value, onLive, onCommit, onActive }: Props
   const [active, setActive] = useState(false);
   const wheelTimer = useRef<number | undefined>(undefined);
   latest.current = gesture.current ? latest.current : value;
+  const pick = useRef(onPick);
+  pick.current = onPick;
+
+  // A newly grabbed element shows its handles right away.
+  const firstTarget = useRef(true);
+  useEffect(() => {
+    if (firstTarget.current) {
+      firstTarget.current = false;
+      return;
+    }
+    setSelected(true);
+  }, [target]);
 
   // Follow the rendered content every frame (it moves with the animation).
   useEffect(() => {
@@ -75,7 +94,7 @@ export function CanvasEditor({ stage, value, onLive, onCommit, onActive }: Props
       const box = boxRef.current;
       const root = stage.current;
       if (box && root) {
-        const el = root.querySelector(`.${CONTENT_CLASS}`) as SVGGraphicsElement | null;
+        const el = root.querySelector(`svg .${target}`) as SVGGraphicsElement | null;
         const r = el?.getBoundingClientRect();
         if (el && r && r.width > 0 && r.height > 0) {
           const s = root.getBoundingClientRect();
@@ -92,6 +111,39 @@ export function CanvasEditor({ stage, value, onLive, onCommit, onActive }: Props
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
+  }, [stage, target]);
+
+  // Double tap (two quick taps close together) anywhere on the stage.
+  useEffect(() => {
+    const root = stage.current;
+    if (!root) return;
+    let down: { x: number; y: number; t: number } | null = null;
+    let last: { x: number; y: number; t: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.isPrimary) down = { x: e.clientX, y: e.clientY, t: performance.now() };
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!down || !e.isPrimary) return;
+      const now = performance.now();
+      const tap = Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10 && now - down.t < 400;
+      down = null;
+      if (!tap) {
+        last = null;
+        return;
+      }
+      if (last && now - last.t < 450 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30) {
+        last = null;
+        pick.current?.(e.clientX, e.clientY);
+      } else {
+        last = { x: e.clientX, y: e.clientY, t: now };
+      }
+    };
+    root.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      root.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+    };
   }, [stage]);
 
   // Deselect when tapping elsewhere.
@@ -132,6 +184,7 @@ export function CanvasEditor({ stage, value, onLive, onCommit, onActive }: Props
     const p = { x: e.clientX, y: e.clientY };
     gesture.current = {
       mode,
+      initial: latest.current,
       start: latest.current,
       k: unitsPerPx(),
       center: boxCenter(),
@@ -164,7 +217,7 @@ export function CanvasEditor({ stage, value, onLive, onCommit, onActive }: Props
         root.setPointerCapture?.(e.pointerId);
       } else if (!g && e.pointerType === 'touch' && !boxRef.current?.contains(e.target as Node)) {
         const p = { x: e.clientX, y: e.clientY };
-        gesture.current = { mode: 'scroll', start: latest.current, k: 1, center: p, pointers: new Map([[e.pointerId, p]]), origin: new Map([[e.pointerId, p]]), last: p };
+        gesture.current = { mode: 'scroll', initial: latest.current, start: latest.current, k: 1, center: p, pointers: new Map([[e.pointerId, p]]), origin: new Map([[e.pointerId, p]]), last: p };
       }
     };
     root.addEventListener('pointerdown', down);
@@ -218,7 +271,7 @@ export function CanvasEditor({ stage, value, onLive, onCommit, onActive }: Props
       if (g.mode !== 'scroll') {
         setActive(false);
         onActive?.(false);
-        onCommit(latest.current);
+        if (!sameXf(latest.current, g.initial)) onCommit(latest.current);
       }
     };
     window.addEventListener('pointermove', move);

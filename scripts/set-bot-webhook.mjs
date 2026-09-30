@@ -58,7 +58,7 @@ try {
   await call('setWebhook', {
     url: `${backendUrl}/api/telegram`,
     secret_token: secret,
-    allowed_updates: ['message'],
+    allowed_updates: ['message', 'callback_query'],
     drop_pending_updates: true,
   });
   const info = await call('getWebhookInfo');

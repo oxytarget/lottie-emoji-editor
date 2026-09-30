@@ -139,7 +139,7 @@ describe('compileAll', () => {
       offsetY: 0,
       offsetX: 0,
       rotation: 0,
-      imports: [{ id: 'import-x', data: imported, colorMap: { '#7c3aed': '#ff0000' }, overlay: true, hidden: [], replace: null }],
+      imports: [{ id: 'import-x', data: imported, colorMap: { '#7c3aed': '#ff0000' }, overlay: true, hidden: [], replace: null, transforms: {} }],
     });
     expect(out.map((o) => o.id)).toEqual([...BUILTIN_TEMPLATES.map((t) => t.id), 'import-x']);
     for (const o of out) {
@@ -151,5 +151,37 @@ describe('compileAll', () => {
     const imp = JSON.parse(out[out.length - 1].json) as LottieAnimation;
     expect(imp.layers[0].nm).toBe('content');
     expect(extractPalette(imp)).toContain('#ff0000');
+  });
+
+  it('reuses results, keeps animations sent once and tags only the annotated preview', async () => {
+    const { createCompiler } = await import('../state/compile');
+    const b = base();
+    const data = compose(base(BUILTIN_TEMPLATES[1]));
+    const compiler = createCompiler();
+    const input = {
+      art: b.art,
+      artStyle: b.artStyle,
+      colors: b.colors,
+      outlineWidth: 12,
+      scale: 1,
+      offsetY: 0,
+      offsetX: 0,
+      rotation: 0,
+      imports: [{ id: 'pack:x:1', data, colorMap: {}, overlay: false, hidden: [], replace: 'l1', transforms: {} }],
+      annotate: 'pack:x:1',
+    };
+    const first = compiler.compile(input);
+    const imp = first.find((o) => o.id === 'pack:x:1')!;
+    expect(imp.preview).toContain('"cl":"pt-');
+    expect(imp.json).not.toContain('"cl":"pt-');
+    // Colour change: built-ins rebuild, the imported sticker is reused; its data need not be sent again.
+    const second = compiler.compile({ ...input, colors: { ...b.colors, body: solid('#00ff00') }, imports: [{ ...input.imports[0], data: undefined }] });
+    expect(second.find((o) => o.id === 'pack:x:1')).toBe(imp);
+    expect(second.find((o) => o.id === 'classic')).not.toBe(first.find((o) => o.id === 'classic'));
+    // A part move rebuilds it.
+    const third = compiler.compile({ ...input, imports: [{ ...input.imports[0], data: undefined, transforms: { l2: { x: 10, y: 0, scale: 1, rotation: 0 } } }] });
+    expect(third.find((o) => o.id === 'pack:x:1')).not.toBe(imp);
+    // Dropped animations are forgotten.
+    expect(compiler.compile({ ...input, imports: [{ ...input.imports[0], data: undefined }] }, []).some((o) => o.id === 'pack:x:1')).toBe(false);
   });
 });

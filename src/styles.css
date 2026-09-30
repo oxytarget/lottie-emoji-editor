@@ -1930,6 +1930,217 @@ p {
   font-size: 12px;
 }
 
+/* Grabbed part (canvas + parts list) */
+.grab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.grab-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grab-chip strong {
+  color: var(--text);
+}
+
+.grab-release {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--muted);
+}
+
+.part-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border-radius: 12px;
+  text-align: left;
+  color: inherit;
+}
+
+.part-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.part-row.is-grabbed {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.part-row.is-grabbed .part-thumb {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.part-moved {
+  flex: none;
+  color: var(--accent);
+}
+
+.part-controls {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 12px 14px;
+  margin-top: -2px;
+  border-radius: 16px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+}
+
+.part-controls .slider-grid {
+  width: 100%;
+}
+
+/* Sticker packs as templates */
+.pack-form-wrap {
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+}
+
+.pack-form-inline {
+  display: grid;
+  gap: 10px;
+}
+
+.pack-link-row {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pack-link-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tile-import.is-active {
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+.pack-section {
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.pack-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 6px;
+}
+
+.pack-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 8px;
+  border-radius: 14px;
+  color: var(--accent);
+  text-align: left;
+}
+
+.pack-title {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.pack-title strong {
+  color: var(--text);
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pack-title .hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pack-toggle svg:last-child {
+  flex: none;
+  transition: transform 0.3s var(--soft-spring, ease);
+}
+
+.pack-section.is-open .collapsible-anim {
+  grid-template-rows: 1fr;
+}
+
+.pack-section .collapsible-body {
+  padding: 0 12px 12px;
+}
+
+.pack-section.is-open .collapsible-body {
+  opacity: 1;
+  transform: none;
+}
+
+.pack-progress {
+  height: 4px;
+  margin: 0 16px 10px;
+  border-radius: 4px;
+  background: var(--sub-2);
+  overflow: hidden;
+}
+
+.pack-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.tile.is-pending {
+  background: var(--sub);
+}
+
+.tile-skeleton {
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  background: linear-gradient(100deg, var(--sub-2) 30%, var(--card) 50%, var(--sub-2) 70%) 0 0 / 300% 100%;
+  animation: skeleton 1.3s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
 /* ───────────────────────── Motion ─────────────────────────
  * All UI motion lives here. Everything is CSS, so the global
  * `prefers-reduced-motion` rule above switches it off.
@@ -2457,4 +2668,21 @@ p {
 
 .preset.is-active .preset-dots {
   transform: scale(1.08);
+}
+
+.pack-form-wrap {
+  transform-origin: 50% 0;
+  animation: menu-in 0.22s var(--ease-out);
+}
+
+.pack-form-wrap[data-state='closed'] {
+  animation: menu-out 0.18s ease forwards;
+}
+
+.pack-section {
+  animation: card-in 0.4s var(--ease-out) backwards;
+}
+
+.part-controls {
+  animation: item-in 0.25s var(--ease-out);
 }
