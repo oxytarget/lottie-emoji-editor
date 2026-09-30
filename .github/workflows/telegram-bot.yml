@@ -1,0 +1,28 @@
+# Configures the Telegram bot for the Mini App (menu button, /start command, descriptions).
+# Needs the repository secret TELEGRAM_BOT_TOKEN (Settings → Secrets and variables → Actions).
+# Run it manually from the Actions tab; re-running is safe (all calls are idempotent).
+name: Set up Telegram bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: Mini App URL (leave empty for this repository's GitHub Pages URL)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/setup-telegram-bot.mjs
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          APP_URL: ${{ inputs.app_url }}

@@ -52,6 +52,19 @@ npm run preview    # перегляд збірки
 
 Потім у [@BotFather](https://t.me/BotFather) → *Bot Settings → Menu Button / Configure Mini App* вкажіть URL застосунку.
 
+### Бот
+
+Workflow `.github/workflows/telegram-bot.yml` налаштовує бота одним запуском: кнопка меню «Emoji Studio» відкриває редактор,
+команда `/start`, опис і короткий опис (uk / ru / en). Сервер для цього не потрібен.
+
+1. Додайте токен бота як секрет репозиторію: *Settings → Secrets and variables → Actions → New repository secret*,
+   назва `TELEGRAM_BOT_TOKEN`. Токен ніколи не комітьте в репозиторій.
+2. *Actions → Set up Telegram bot → Run workflow*.
+3. За бажанням: @BotFather → `/mybots` → бот → *Bot Settings → Configure Mini App* → увімкніть із тим самим URL —
+   у профілі бота з'явиться кнопка «Open App».
+
+Локально: `TELEGRAM_BOT_TOKEN=... APP_URL=https://... node scripts/setup-telegram-bot.mjs`.
+
 Скрипт `telegram-web-app.js` підвантажується лише тоді, коли сторінку відкрито як Mini App (є параметри `tgWebApp*`):
 застосунок розгортається на весь екран, підхоплює мову користувача та дає тактильний відгук.
 Деякі клієнти Telegram (зокрема iOS) блокують завантаження файлів із міні-застосунку, тому у вікні експорту є кнопка «Відкрити в браузері».
