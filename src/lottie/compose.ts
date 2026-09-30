@@ -22,6 +22,8 @@ export interface ComposeInput {
   offsetX?: number;
   /** Rotation of the text/logo in degrees (rotating on the canvas). */
   rotation?: number;
+  /** Height of the text/logo relative to its width (free stretching on the canvas; 1 = as drawn). */
+  stretch?: number;
   name?: string;
 }
 
@@ -30,14 +32,15 @@ const EMPTY_BOX: BBox = { x: -1, y: -1, w: 2, h: 2 };
 /** Class of the user's text/logo group in the rendered SVG — the canvas editor finds it by this. */
 export const CONTENT_CLASS = 'emoji-content';
 
-/** Wraps the user's content so it can be rotated and located in the rendered SVG. */
-export function contentGroup(shapes: ShapeItem[], rotation = 0, p: [number, number] = [0, 0]): ShapeItem {
-  return { ...group(shapes, { p, r: rotation }, 'content'), cl: CONTENT_CLASS };
+/** Wraps the user's content so it can be rotated, stretched and located in the rendered SVG. */
+export function contentGroup(shapes: ShapeItem[], rotation = 0, p: [number, number] = [0, 0], stretch = 1): ShapeItem {
+  const s = Math.abs(stretch - 1) < 1e-3 ? undefined : [100, Math.round(stretch * 1000) / 10];
+  return { ...group(shapes, { p, r: rotation, ...(s ? { s } : {}) }, 'content'), cl: CONTENT_CLASS };
 }
 
 /** Builds a Telegram-compatible (TGS-ready) Lottie animation for a template. */
 export function compose(input: ComposeInput): LottieAnimation {
-  const { template, art, artStyle, colors, outlineWidth, scale, offsetY, offsetX = 0, rotation = 0 } = input;
+  const { template, art, artStyle, colors, outlineWidth, scale, offsetY, offsetX = 0, rotation = 0, stretch = 1 } = input;
   const op = template.duration;
   const layers = new LayerStack(op);
 
@@ -72,7 +75,7 @@ export function compose(input: ComposeInput): LottieAnimation {
         r: opts.r,
         o: opts.o,
         parent: opts.parent,
-        shapes: [contentGroup(shapes, rotation)],
+        shapes: [contentGroup(shapes, rotation, [0, 0], stretch)],
       });
     },
   };

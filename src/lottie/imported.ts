@@ -102,6 +102,7 @@ export interface OverlayInput {
   offsetY: number;
   offsetX?: number;
   rotation?: number;
+  stretch?: number;
 }
 
 /** Adds the user's content as the top-most layer, centred on the canvas. */
@@ -126,7 +127,7 @@ export function withOverlay(anim: LottieAnimation, overlay: OverlayInput): Lotti
       s: { a: 0, k: [100, 100, 100] },
     },
     ao: 0,
-    shapes: [contentGroup(shapes, overlay.rotation ?? 0)],
+    shapes: [contentGroup(shapes, overlay.rotation ?? 0, [0, 0], overlay.stretch ?? 1)],
     ip: anim.ip,
     op: anim.op,
     st: 0,

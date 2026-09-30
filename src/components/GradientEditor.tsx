@@ -31,7 +31,8 @@ import { CheckIcon, GradHandlesIcon, LinearIcon, RadialIcon, ResetIcon, RotateIc
 
 interface Props {
   stage: React.RefObject<HTMLDivElement | null>;
-  target: GradTarget;
+  /** Which tagged gradient (`pg-<target>` class): a user paint, or `i<N>` for an item of an imported animation. */
+  target: string;
   paint: GradientPaint;
   onLive(p: GradientPaint): void;
   onCommit(p: GradientPaint): void;
@@ -70,7 +71,7 @@ interface Drag {
 const MIN_LENGTH = 0.03;
 
 /** The largest rendered element painted with the gradient (all of them share its shape). */
-function locate(root: HTMLElement, target: GradTarget): Found | null {
+function locate(root: HTMLElement, target: string): Found | null {
   let best: { el: SVGGraphicsElement; area: number } | null = null;
   for (const el of root.querySelectorAll<SVGGraphicsElement>(`.preview-swap svg .${GRADIENT_CLASS}${target}`)) {
     const r = el.getBoundingClientRect();
@@ -216,10 +217,13 @@ export function GradientEditor(props: Props) {
     const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (!dir || !f) return;
     e.preventDefault();
-    const step = e.shiftKey ? 0.1 : 0.02;
+    // Steps in screen pixels (the points may be relative to an area or in a layer's own units).
+    const step = e.shiftKey ? 16 : 4;
     const pts = gradientPoints(paint, f.box);
     const q = stop === 0 ? pts.from : pts.to;
-    const moved: Pt = [q[0] + dir[0] * step, q[1] + dir[1] * step];
+    const at = screenOf(f, q);
+    const back = new DOMPoint(at.x + dir[0] * step, at.y + dir[1] * step).matrixTransform(f.m.inverse());
+    const moved: Pt = [(back.x - f.box.x) / (f.box.w || 1), (back.y - f.box.y) / (f.box.h || 1)];
     const next = stop === 0 ? withPoints(paint, moved, pts.to) : withPoints(paint, pts.from, moved);
     latest.current.onCommit(next);
   };

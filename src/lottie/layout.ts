@@ -1,6 +1,7 @@
 import { artToShapes, fitArt, type VectorArt } from '../content/art';
 import { solid } from './paint';
-import { assetsOf, INSERTED, itemsBounds, resolvePart, type AnyLayer } from './parts';
+import { assetsOf, INSERTED, itemsBounds, resolvePart, SLOT_MN, type AnyLayer } from './parts';
+import { stat } from './anim';
 import { group } from './shapes';
 import type { LottieAnimation, ShapeItem } from './types';
 
@@ -26,7 +27,13 @@ export type LayoutOp =
   | { kind: 'move'; part: string; at: Drop }
   | { kind: 'remove'; part: string };
 
-export { INSERTED };
+export { INSERTED, SLOT_MN };
+
+/**
+ * `svg` key of an insert that makes a place for the user's text/logo: an invisible frame the text/logo then
+ * replaces (see the part edits), so it sits at that depth and moves with the group it was dropped into.
+ */
+export const CONTENT_SLOT = '@content';
 
 type Json = Record<string, unknown>;
 type ListKind = 'layers' | 'items';
@@ -140,6 +147,7 @@ function layerToGroup(layer: AnyLayer): ShapeItem {
     sa: { a: 0, k: 0 },
   };
   const g: ShapeItem = { ty: 'gr', nm: layer.nm, it: [...(((layer.shapes ?? []) as ShapeItem[]).filter((it) => it.ty !== 'tr')), tr] };
+  if (layer.mn) g.mn = layer.mn;
   if (layer.cl) g.cl = layer.cl;
   return g;
 }
@@ -148,6 +156,7 @@ function groupToLayer(g: ShapeItem, ind: number, ip: number, op: number): AnyLay
   const items = (g.it as ShapeItem[]) ?? [];
   const tr = (items.find((it) => it.ty === 'tr') ?? {}) as Json;
   return {
+    ...(g.mn ? { mn: g.mn } : {}),
     ddd: 0,
     ind,
     ty: 4,
@@ -190,6 +199,9 @@ function logoShapes(art: VectorArt, w: number, h: number): ShapeItem[] {
 // Applying operations
 // ---------------------------------------------------------------------------
 
+/** An empty frame (a rectangle without paint) — the size the user's text/logo is fitted into. */
+const slotFrame = (w: number, h: number): ShapeItem => ({ ty: 'rc', nm: 'frame', d: 1, p: stat([0, 0]), s: stat([Math.round(w), Math.round(h)]), r: stat(0) });
+
 /** Why an operation cannot be applied (the UI does not offer such drops). */
 export function checkOp(anim: LottieAnimation, op: LayoutOp): string | null {
   if (op.kind === 'insert') return childList(anim, op.at.parent) ? null : 'no-container';
@@ -217,9 +229,10 @@ export function checkOp(anim: LottieAnimation, op: LayoutOp): string | null {
 export function applyLayoutOp(anim: LottieAnimation, op: LayoutOp, svgArt: (svg: string) => VectorArt | null): string | null {
   if (checkOp(anim, op)) return null;
   if (op.kind === 'insert') {
-    const art = svgArt(op.svg);
+    const slot = op.svg === CONTENT_SLOT;
+    const art = slot ? null : svgArt(op.svg);
     const ref = childList(anim, op.at.parent)!;
-    if (!art) return null;
+    if (!art && !slot) return null;
     const at = insertIndex(ref, op.at.index);
     if (ref.kind === 'layers') {
       const layers = ref.list as AnyLayer[];
@@ -233,17 +246,19 @@ export function applyLayoutOp(anim: LottieAnimation, op: LayoutOp, svgArt: (svg:
         ks: { o: { a: 0, k: 100 }, r: { a: 0, k: 0 }, p: { a: 0, k: [w / 2, h / 2, 0] }, a: { a: 0, k: [0, 0, 0] }, s: { a: 0, k: [100, 100, 100] } },
         ao: 0,
         // The inner wrapper is not "inserted" itself, so the list shows only the layer.
-        shapes: [group(logoShapes(art, w * 0.4, h * 0.4), {}, op.name.slice(INSERTED.length) || 'logo')],
+        shapes: [group(art ? logoShapes(art, w * 0.4, h * 0.4) : [slotFrame(w * 0.62, h * 0.42)], {}, op.name.slice(INSERTED.length) || 'logo')],
         ip: ref.ip ?? anim.ip,
         op: ref.op ?? anim.op,
         st: 0,
         bm: 0,
       };
+      if (slot) layer.mn = SLOT_MN;
       layers.splice(at, 0, layer);
     } else {
       const box = ref.box ?? { x: -50, y: -50, w: 100, h: 100 };
       const size = Math.max(box.w, box.h, 20) * 0.6;
-      const g = group(logoShapes(art, size, size), { p: [box.x + box.w / 2, box.y + box.h / 2] }, op.name);
+      const g = group(art ? logoShapes(art, size, size) : [slotFrame(size, size * 0.6)], { p: [box.x + box.w / 2, box.y + box.h / 2] }, op.name);
+      if (slot) g.mn = SLOT_MN;
       (ref.list as ShapeItem[]).splice(at, 0, g);
     }
     return formatId([...parseId(op.at.parent), childToken(ref.kind, op.at.parent, at)]);
@@ -343,17 +358,24 @@ export interface IdEdits {
   hidden: string[];
   replace: string | null;
   transforms: Record<string, unknown>;
+  /** Per-item colours (item ids move like part ids). */
+  paints?: Record<string, unknown>;
 }
 
-/** Moves hidden/replaced/moved part ids along with an operation (`anim` = structure before it). */
+function remapKeys(record: Record<string, unknown>, map: (id: string) => string | null): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [id, value] of Object.entries(record)) {
+    const to = map(id);
+    if (to) out[to] = value;
+  }
+  return out;
+}
+
+/** Moves hidden/replaced/moved part ids (and edited items) along with an operation (`anim` = structure before it). */
 export function remapEdits<T extends IdEdits>(edits: T, op: LayoutOp, anim: LottieAnimation): T {
   const map = (id: string) => remapId(id, op, anim);
   const hidden = edits.hidden.map(map).filter((id): id is string => !!id);
   const replace = edits.replace ? map(edits.replace) : null;
-  const transforms: Record<string, unknown> = {};
-  for (const [id, xf] of Object.entries(edits.transforms)) {
-    const to = map(id);
-    if (to) transforms[to] = xf;
-  }
-  return { ...edits, hidden, replace, transforms };
+  const transforms = remapKeys(edits.transforms, map);
+  return { ...edits, hidden, replace, transforms, ...(edits.paints ? { paints: remapKeys(edits.paints, map) } : {}) };
 }

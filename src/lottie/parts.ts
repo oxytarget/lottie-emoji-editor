@@ -24,6 +24,8 @@ export interface Part {
   detected: boolean;
   /** Can be replaced with the user's text/logo. */
   replaceable: boolean;
+  /** A place for the user's text/logo made in the layer list (see `CONTENT_SLOT` in layout.ts). */
+  slot?: boolean;
   children: Part[];
 }
 
@@ -173,6 +175,8 @@ function looksLikeText(name: string, contours: number, box: BBox | null): boolea
 /** Name prefix of logos inserted from Favourites in the layer list (see layout.ts). */
 export const INSERTED = '★ ';
 const isInserted = (p: Part) => p.name.startsWith(INSERTED);
+/** Match name (`mn`) of a slot for the user's text/logo — a standard Lottie field players ignore. */
+export const SLOT_MN = 'emoji-studio:content';
 
 /**
  * Collapses single wrapper groups (common in After Effects exports) so the meaningful groups are listed.
@@ -200,6 +204,7 @@ function groupParts(items: readonly ShapeItem[], prefix: string, groupDepth: num
         kind: 'group' as const,
         detected: looksLikeText(name, contours, box),
         replaceable: !!box,
+        ...(it.mn === SLOT_MN ? { slot: true } : {}),
         children: unwrap(groupParts(children, id, groupDepth + 1)),
       };
     });
@@ -222,7 +227,7 @@ function layerParts(layers: readonly AnyLayer[], assets: Map<string, Asset>, pre
       const asset = assets.get(layer.refId);
       if (asset?.layers) children = layerParts(asset.layers, assets, `${id}>`, new Set([...seen, layer.refId]));
     }
-    return { id, name, kind, detected, replaceable: kind !== 'null' && kind !== 'other', children };
+    return { id, name, kind, detected, replaceable: kind !== 'null' && kind !== 'other', ...(layer.mn === SLOT_MN ? { slot: true } : {}), children };
   });
 }
 
@@ -295,12 +300,15 @@ export interface PartXf {
   scale: number;
   /** Degrees, clockwise. */
   rotation: number;
+  /** Height relative to width (free stretching; 1 or missing = proportional). */
+  stretch?: number;
 }
 
 export const NO_XF: PartXf = { x: 0, y: 0, scale: 1, rotation: 0 };
 
 export const isIdentityXf = (xf: PartXf | undefined): boolean =>
-  !xf || (Math.abs(xf.x) < 0.01 && Math.abs(xf.y) < 0.01 && Math.abs(xf.scale - 1) < 1e-3 && Math.abs(xf.rotation) < 0.01);
+  !xf ||
+  (Math.abs(xf.x) < 0.01 && Math.abs(xf.y) < 0.01 && Math.abs(xf.scale - 1) < 1e-3 && Math.abs(xf.rotation) < 0.01 && Math.abs((xf.stretch ?? 1) - 1) < 1e-3);
 
 /** SVG class prefix of annotated parts: `pt-N`, N = index in `flattenParts(listParts(anim))`. */
 export const PART_CLASS = 'pt-';
@@ -323,6 +331,7 @@ export interface ReplaceContent {
   /** Horizontal offset, relative to the replaced part's size like `offsetY`. */
   offsetX?: number;
   rotation?: number;
+  stretch?: number;
 }
 
 function contentShapes(box: BBox, content: ReplaceContent): ShapeItem[] {
@@ -336,7 +345,7 @@ function contentShapes(box: BBox, content: ReplaceContent): ShapeItem[] {
   const dy = (content.offsetY / 200) * box.h;
   const dx = ((content.offsetX ?? 0) / 200) * box.w;
   if (!shapes.length) return [];
-  return [{ ...contentGroup(shapes, content.rotation ?? 0, [box.x + box.w / 2 + dx, box.y + box.h / 2 + dy]), nm: 'replaced-content' }];
+  return [{ ...contentGroup(shapes, content.rotation ?? 0, [box.x + box.w / 2 + dx, box.y + box.h / 2 + dy], content.stretch ?? 1), nm: 'replaced-content' }];
 }
 
 /** Box a non-shape layer occupies in its own coordinates. */
@@ -374,6 +383,7 @@ interface MovePlan {
   anchor: [number, number];
   pos: [number, number];
   scale: number;
+  stretch: number;
   rotation: number;
 }
 
@@ -388,7 +398,7 @@ function movePlan(anim: LottieAnimation, id: string, xf: PartXf): MovePlan | nul
   const dx = inv[0] * xf.x + inv[2] * xf.y;
   const dy = inv[1] * xf.x + inv[3] * xf.y;
   const flipped = parent[0] * parent[3] - parent[1] * parent[2] < 0;
-  return { anchor: [cx, cy], pos: [cx + dx, cy + dy], scale: xf.scale, rotation: flipped ? -xf.rotation : xf.rotation };
+  return { anchor: [cx, cy], pos: [cx + dx, cy + dy], scale: xf.scale, stretch: xf.stretch ?? 1, rotation: flipped ? -xf.rotation : xf.rotation };
 }
 
 /**
@@ -401,7 +411,7 @@ function applyMove(target: Target, plan: MovePlan): void {
     target.list[target.index] = {
       ty: 'gr',
       nm: 'part-transform',
-      it: [target.group, shapeTransform({ a: plan.anchor.map(r), p: plan.pos.map(r), s: [r(plan.scale * 100), r(plan.scale * 100)], r: r(plan.rotation) })],
+      it: [target.group, shapeTransform({ a: plan.anchor.map(r), p: plan.pos.map(r), s: [r(plan.scale * 100), r(plan.scale * plan.stretch * 100)], r: r(plan.rotation) })],
     };
     return;
   }
@@ -418,7 +428,7 @@ function applyMove(target: Target, plan: MovePlan): void {
       r: { a: 0, k: r(plan.rotation) },
       p: { a: 0, k: [r(plan.pos[0]), r(plan.pos[1]), 0] },
       a: { a: 0, k: [r(plan.anchor[0]), r(plan.anchor[1]), 0] },
-      s: { a: 0, k: [r(plan.scale * 100), r(plan.scale * 100), 100] },
+      s: { a: 0, k: [r(plan.scale * 100), r(plan.scale * plan.stretch * 100), 100] },
     },
     ao: 0,
     ip: layer.ip,

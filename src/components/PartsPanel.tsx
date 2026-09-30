@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { I18nKey } from '../i18n';
 import { recolor } from '../lottie/imported';
+import { applyItemPaints } from '../lottie/itemPaints';
 import { flattenParts, isIdentityXf, isolatePart, listParts, NO_XF, partFrame, partSvg, type Part, type PartKind, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
 import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
+import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ImageIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, TypeIcon, WarningIcon } from './icons';
 import { applyLayerOp, DragGhost, FavLogoStrip, useLayerDnd, type DragSource } from './LayerDnd';
 import { checkOp, INSERTED, parentOf, type Drop } from '../lottie/layout';
 import { MotionButton, Slider } from './controls';
+import { LayerPaints } from './LayerPaints';
 import { LottieView, useInView } from './LottieView';
 
 const KIND_KEYS: Record<PartKind, I18nKey> = {
@@ -147,6 +149,7 @@ function PartControls({ imp, part, anim, flat }: { imp: ImportedTemplate; part: 
   const reset = () => editImport(imp.id, { kind: 'transform', part: part.id, xf: null });
   return (
     <li className="part-controls" style={{ '--depth': 0 } as React.CSSProperties}>
+      <LayerPaints imp={imp} part={part} anim={anim} />
       <div className="slider-grid">
         <Slider label={t('partX')} value={Math.round(xf.x)} min={-256} max={256} step={1} onChange={(x) => set({ x })} onReset={() => set({ x: 0 })} />
         <Slider label={t('partY')} value={Math.round(xf.y)} min={-256} max={256} step={1} onChange={(y) => set({ y })} onReset={() => set({ y: 0 })} />
@@ -202,6 +205,7 @@ interface RowProps {
 function PartRow(props: RowProps) {
   const { part, depth, anim, imp, expanded, grabbed, flat, dropState, startDrag, toggleExpanded, toggleHidden, toggleReplace, toggleGrab } = props;
   const t = useT();
+  const mode = useEditor((s) => s.mode);
   const hiddenSelf = imp.hidden.includes(part.id);
   const hiddenByParent = imp.hidden.some((h) => isAncestor(h, part.id));
   const replaced = imp.replace === part.id;
@@ -234,7 +238,14 @@ function PartRow(props: RowProps) {
           aria-label={`${t('partsGrab')}: ${part.name}`}
           onClick={() => toggleGrab(part.id)}
         >
-          <PartThumb anim={anim} id={part.id} />
+          {part.slot ? (
+            // A place for the user's text/logo: its frame is invisible, so show what goes there.
+            <span className="part-thumb is-slot" aria-hidden>
+              {mode === 'logo' ? <ImageIcon width={20} height={20} /> : <TypeIcon width={20} height={20} />}
+            </span>
+          ) : (
+            <PartThumb anim={anim} id={part.id} />
+          )}
           <span className="part-name">
             <strong title={part.name}>{part.name}</strong>
             <span className="hint">
@@ -280,7 +291,8 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
   const text = useEditor((s) => s.text);
   const logo = useEditor((s) => s.logo);
 
-  const anim = useMemo(() => recolor(imp.data, imp.colorMap), [imp.data, imp.colorMap]);
+  // Thumbnails, colours and saved logos show the layer colours as edited.
+  const anim = useMemo(() => applyItemPaints(recolor(imp.data, imp.colorMap), imp.paints ?? {}), [imp.data, imp.colorMap, imp.paints]);
   const parts = useMemo(() => listParts(imp.data), [imp.data]);
   const flat = useMemo(() => flattenParts(parts), [parts]);
   const detected = flat.filter((p) => p.detected && p.replaceable);

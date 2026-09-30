@@ -56,6 +56,18 @@ export const LinearIcon = (p: P) => (
     <path d="M15.5 4v16" opacity="0.25" />
   </svg>
 );
+export const LockIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="5" y="11" width="14" height="10" rx="2.5" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+export const UnlockIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="5" y="11" width="14" height="10" rx="2.5" />
+    <path d="M8 11V8a4 4 0 0 1 7.6-1.7" />
+  </svg>
+);
 export const ChevronIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M6 9l6 6 6-6" />

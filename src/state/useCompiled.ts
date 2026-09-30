@@ -174,7 +174,7 @@ export function useCompiled(): Compiled {
     const ids = new Set(compiledIds.split('\n'));
     return s.imports
       .filter((imp) => ids.has(imp.id))
-      .map(({ id, data, colorMap, overlay, hidden, replace, transforms }) => ({ id, data, colorMap, overlay, hidden, replace, transforms }));
+      .map(({ id, data, colorMap, overlay, hidden, replace, transforms, paints }) => ({ id, data, colorMap, overlay, hidden, replace, transforms, paints }));
   }, [s.imports, compiledIds]);
   const keep = useMemo(() => s.imports.map((imp) => imp.id), [s.imports]);
   const annotate = s.imports.some((imp) => imp.id === s.active) ? s.active : null;
@@ -189,10 +189,11 @@ export function useCompiled(): Compiled {
       offsetY: s.offsetY,
       offsetX: s.offsetX,
       rotation: s.rotation,
+      stretch: s.stretch,
       imports: importsInput,
       annotate,
     }),
-    [art, artStyle, s.colors, s.outlineWidth, s.scale, s.offsetY, s.offsetX, s.rotation, importsInput, annotate],
+    [art, artStyle, s.colors, s.outlineWidth, s.scale, s.offsetY, s.offsetX, s.rotation, s.stretch, importsInput, annotate],
   );
 
   const run = useCompileRunner();

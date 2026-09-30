@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { haptic } from '../lib/telegram';
 import { CONTENT_CLASS } from '../lottie/compose';
 import { flattenParts, listParts, NO_XF, PART_CLASS, type PartXf } from '../lottie/parts';
+import { recolor } from '../lottie/imported';
+import { applyItemPaints, itemGradientClass, listPaintItems, type ItemPaint } from '../lottie/itemPaints';
 import type { GradientPaint, Paint } from '../lottie/paint';
 import { compileOne, type CompileInput } from '../state/compile';
 import { paintOf, setPaintOf, withPaint, type GradTarget } from '../state/gradients';
@@ -206,10 +208,11 @@ function Player(props: {
   );
 }
 
-const sameXf = (a: ContentXf, b: ContentXf) => a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation;
-const DEFAULT_XF: ContentXf = { scale: 1, offsetX: 0, offsetY: 0, rotation: 0 };
-const toContentXf = (p: PartXf): ContentXf => ({ scale: p.scale, offsetX: p.x, offsetY: p.y, rotation: p.rotation });
-const toPartXf = (c: ContentXf): PartXf => ({ x: c.offsetX, y: c.offsetY, scale: c.scale, rotation: c.rotation });
+const sameXf = (a: ContentXf, b: ContentXf) =>
+  a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation && a.stretch === b.stretch;
+const DEFAULT_XF: ContentXf = { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, stretch: 1 };
+const toContentXf = (p: PartXf): ContentXf => ({ scale: p.scale, offsetX: p.x, offsetY: p.y, rotation: p.rotation, stretch: p.stretch ?? 1 });
+const toPartXf = (c: ContentXf): PartXf => ({ x: c.offsetX, y: c.offsetY, scale: c.scale, rotation: c.rotation, ...(c.stretch !== 1 ? { stretch: c.stretch } : {}) });
 /** Canvas selection: the user's text/logo or a part of an imported animation. */
 const CONTENT = '@content';
 const samePaint = (a: Paint, b: Paint) => JSON.stringify(a) === JSON.stringify(b);
@@ -224,6 +227,9 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   const offsetX = useEditor((s) => s.offsetX);
   const offsetY = useEditor((s) => s.offsetY);
   const rotation = useEditor((s) => s.rotation);
+  const stretch = useEditor((s) => s.stretch);
+  const ratioLock = useUi((u) => u.ratioLock);
+  const setRatioLock = useUi((u) => u.setRatioLock);
   const imp = useEditor((s) => (emoji?.imported ? s.imports.find((i) => i.id === emoji.id) : undefined));
   const grab = useUi((u) => u.grab);
   const setGrab = useUi((u) => u.setGrab);
@@ -249,12 +255,33 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   const gradPaint = liveGrad && liveGrad.target === gradTarget ? liveGrad.paint : storedGrad?.type !== 'solid' ? storedGrad : null;
   const gradEditing = !!gradTarget && !!gradPaint;
 
+  // Handles of a layer's own gradient (imported animations), next to the grabbed layer's frame.
+  const gradItem = useUi((u) => u.gradItem);
+  const [liveItem, setLiveItem] = useState<{ item: string; edit: ItemPaint } | null>(null);
+  const itemInfo = useMemo(() => {
+    if (!imp || gradItem?.imp !== imp.id) return null;
+    const all = listPaintItems(applyItemPaints(recolor(imp.data, imp.colorMap), imp.paints ?? {}));
+    const index = all.findIndex((i) => i.id === gradItem.item);
+    const item = all[index];
+    return item?.gradient && item.from && item.to ? { item, cls: itemGradientClass(index) } : null;
+  }, [imp, gradItem]);
+  const itemEdit = (id: string): ItemPaint => imp?.paints?.[id] ?? {};
+  const itemPaint: GradientPaint | null = itemInfo
+    ? {
+        type: itemInfo.item.type === 2 ? 'radial' : 'linear',
+        colors: [itemInfo.item.colors[0], itemInfo.item.colors[itemInfo.item.colors.length - 1]],
+        angle: 0,
+        from: (liveItem?.item === itemInfo.item.id && liveItem.edit.from) || itemInfo.item.from,
+        to: (liveItem?.item === itemInfo.item.id && liveItem.edit.to) || itemInfo.item.to,
+      }
+    : null;
+
   const parts = useMemo(() => (imp ? flattenParts(listParts(imp.data)) : []), [imp?.data]);
   const grabbed = imp && grab?.id === imp.id ? parts.findIndex((p) => p.id === grab.part) : -1;
   const part = grabbed >= 0 ? parts[grabbed] : null;
   const key = part ? part.id : CONTENT;
 
-  const contentXf = useMemo(() => ({ scale, offsetX, offsetY, rotation }), [scale, offsetX, offsetY, rotation]);
+  const contentXf = useMemo(() => ({ scale, offsetX, offsetY, rotation, stretch }), [scale, offsetX, offsetY, rotation, stretch]);
   const partXf = part && imp ? imp.transforms[part.id] : undefined;
   const stored = useMemo(() => (part ? toContentXf(partXf ?? NO_XF) : contentXf), [part, partXf, contentXf]);
   const liveXf = live?.key === key ? live.xf : null;
@@ -263,11 +290,15 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   // While dragging, rebuild only the visible animation (on the main thread, once per frame).
   const liveJson = useMemo(() => {
     if (liveGrad && emoji && !liveXf) return compileOne(withPaint(input, liveGrad.target, liveGrad.paint), emoji.id);
+    if (liveItem && emoji && !liveXf) {
+      const imports = input.imports.map((i) => (i.id === emoji.id ? { ...i, paints: { ...i.paints, [liveItem.item]: liveItem.edit } } : i));
+      return compileOne({ ...input, imports }, emoji.id);
+    }
     if (!liveXf || !emoji) return null;
     if (!part) return compileOne({ ...input, ...liveXf }, emoji.id);
     const imports = input.imports.map((i) => (i.id === emoji.id ? { ...i, transforms: { ...i.transforms, [part.id]: toPartXf(liveXf) } } : i));
     return compileOne({ ...input, imports }, emoji.id);
-  }, [liveXf, liveGrad, input, emoji, part]);
+  }, [liveXf, liveGrad, liveItem, input, emoji, part]);
   // Keep the instant preview until the full recompile of the committed transform has landed.
   useEffect(() => {
     if (live && (live.key !== key || (!editing && !pending && sameXf(live.xf, stored)))) setLive(null);
@@ -276,6 +307,9 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   useEffect(() => {
     if (liveGrad && (liveGrad.target !== gradTarget || (!editing && !pending && storedGrad && samePaint(liveGrad.paint, storedGrad)))) setLiveGrad(null);
   }, [liveGrad, gradTarget, editing, pending, storedGrad]);
+  useEffect(() => {
+    if (liveItem && !editing && !pending && JSON.stringify(imp?.paints?.[liveItem.item] ?? {}) === JSON.stringify(liveItem.edit)) setLiveItem(null);
+  }, [liveItem, editing, pending, imp]);
   // A paint that stopped being a gradient (preset, "remove gradient") closes the handles.
   useEffect(() => {
     if (gradTarget && storedGrad?.type === 'solid' && !liveGrad) setGradEdit(null);
@@ -307,6 +341,38 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
     setLiveGrad({ target: gradTarget, paint: next });
     setPaintOf(gradTarget, next);
   };
+  const onItemLive = (next: GradientPaint) => {
+    if (!itemInfo) return;
+    const id = itemInfo.item.id;
+    const edit: ItemPaint = { ...itemEdit(id), from: next.from, to: next.to };
+    pendingGrad.current = null;
+    if (frame.current) cancelAnimationFrame(frame.current);
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      setLiveItem({ item: id, edit });
+    });
+  };
+  const onItemCommit = (edit: ItemPaint) => {
+    if (!itemInfo || !imp) return;
+    const id = itemInfo.item.id;
+    const full = { ...itemEdit(id), ...edit };
+    setLiveItem({ item: id, edit: full });
+    editImport(imp.id, { kind: 'paint', item: id, paint: full });
+  };
+  /** A dot of a layer gradient: the matching colour in the "Layer colours" window. */
+  const onItemTapStop = (stop: 0 | 1) => {
+    if (!itemInfo) return;
+    const row = document.querySelector(`[data-item="${CSS.escape(itemInfo.item.id)}"]`);
+    const i = stop === 0 ? 0 : itemInfo.item.colors.length - 1;
+    row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row?.querySelector<HTMLButtonElement>(`[data-item-stop="${i}"] .swatch`)?.click();
+  };
+  const onItemStopColor = (stop: 0 | 1, hex: string) => {
+    if (!itemInfo) return;
+    const stops = [...(itemEdit(itemInfo.item.id).stops ?? itemInfo.item.colors)];
+    stops[stop === 0 ? 0 : stops.length - 1] = hex;
+    onItemCommit({ stops });
+  };
   /** A tap on a dot: its colour (the painted favourite, or the palette). */
   const onTapStop = (stop: 0 | 1) => gradBar.current?.querySelector<HTMLButtonElement>(`[data-stop="${stop}"] .swatch`)?.click();
 
@@ -328,7 +394,7 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   const onPick = (x: number, y: number) => {
     const stage = stageRef.current;
     if (!stage || !emoji) return;
-    const hit = document.elementsFromPoint(x, y).find((el) => stage.contains(el) && el.closest('svg') && !el.closest('.canvas-editor'));
+    const hit = document.elementsFromPoint(x, y).find((el) => stage.contains(el) && el.closest('svg') && !el.closest('.canvas-editor, .grad-editor'));
     const chain: string[] = [];
     for (let n: Element | null = hit ?? null; n && n !== stage; n = n.parentElement) {
       if (n.classList.contains(CONTENT_CLASS) && !chain.includes(CONTENT)) chain.push(CONTENT);
@@ -375,15 +441,36 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
             onFound={setGradFound}
           />
         ) : (
-          <CanvasEditor
-            stage={stageRef}
-            target={part ? `${PART_CLASS}${grabbed}` : CONTENT_CLASS}
-            value={xf}
-            onLive={onLive}
-            onCommit={onCommit}
-            onActive={setEditing}
-            onPick={onPick}
-          />
+          <>
+            <CanvasEditor
+              stage={stageRef}
+              target={part ? `${PART_CLASS}${grabbed}` : CONTENT_CLASS}
+              value={xf}
+              onLive={onLive}
+              onCommit={onCommit}
+              onActive={setEditing}
+              onPick={onPick}
+              locked={ratioLock}
+              onToggleLock={() => {
+                setRatioLock(!ratioLock);
+                haptic();
+              }}
+            />
+            {itemInfo && itemPaint && (
+              <GradientEditor
+                key={itemInfo.item.id}
+                stage={stageRef}
+                target={itemInfo.cls}
+                paint={itemPaint}
+                onLive={onItemLive}
+                onCommit={(p) => onItemCommit({ from: p.from, to: p.to })}
+                onActive={setEditing}
+                onTapStop={onItemTapStop}
+                onStopColor={onItemStopColor}
+                onFound={() => {}}
+              />
+            )}
+          </>
         )}
         {pending && <span className="preview-busy" aria-hidden />}
       </div>

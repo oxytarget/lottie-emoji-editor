@@ -4,8 +4,9 @@ import { DEFAULT_FONT_ID } from '../content/fonts';
 import { detectLang } from '../i18n';
 import type { Paint } from '../lottie/paint';
 import { extractPalette } from '../lottie/imported';
-import { applyLayoutOp, checkOp, remapEdits, type LayoutOp } from '../lottie/layout';
-import type { PartXf } from '../lottie/parts';
+import { applyLayoutOp, checkOp, CONTENT_SLOT, remapEdits, remapId, type Drop, type LayoutOp } from '../lottie/layout';
+import type { ItemPaint } from '../lottie/itemPaints';
+import { flattenParts, listParts, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import type { ColorRole, EmojiColors, Lang } from '../templates/types';
 import { applyImportOp, applyImportOpTo, type ImportOp } from './importOps';
@@ -30,6 +31,8 @@ export interface ImportedTemplate {
   replace: string | null;
   /** Parts moved/resized/rotated on the canvas. */
   transforms: Record<string, PartXf>;
+  /** Colours of single fills/strokes/gradients, by item id (see lottie/itemPaints.ts). */
+  paints?: Record<string, ItemPaint>;
   /** Sticker from a Telegram pack (reloaded through the bot on every start). */
   source?: { pack: string; uid: string; emoji: string };
   /** What the pack analysis picked — "reset" goes back to it. */
@@ -59,7 +62,7 @@ export interface UserPreset extends ColorPreset {
 }
 
 /** User edits of a pack sticker, kept across sessions (the animation itself is not stored). */
-export type PackEdit = Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms'> & { layout?: LayoutOp[] };
+export type PackEdit = Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms' | 'paints'> & { layout?: LayoutOp[] };
 
 export type PreviewBg = 'light' | 'dark' | 'chess';
 
@@ -92,6 +95,8 @@ export interface EditorData {
   offsetY: number;
   offsetX: number;
   rotation: number;
+  /** Height of the text/logo relative to its width (free stretching on the canvas). */
+  stretch: number;
   selected: string[];
   active: string;
   previewBg: PreviewBg;
@@ -115,7 +120,7 @@ export interface EditorActions {
   set<K extends keyof EditorData>(key: K, value: EditorData[K]): void;
   setColor(role: ColorRole, paint: Paint): void;
   /** Position/size/rotation of the text/logo (edited on the canvas). */
-  setTransform(xf: { scale: number; offsetX: number; offsetY: number; rotation: number }): void;
+  setTransform(xf: { scale: number; offsetX: number; offsetY: number; rotation: number; stretch?: number }): void;
   applyPreset(preset: ColorPreset): void;
   randomizeEmoji(): void;
   randomizeText(): void;
@@ -129,6 +134,11 @@ export interface EditorActions {
   editImport(id: string, op: ImportOp): { applied: number; total: number };
   /** Changes the layer structure of an imported animation; returns the new id of the inserted/moved part. */
   layoutImport(id: string, op: LayoutOp): string | null;
+  /**
+   * Puts the user's text/logo into the layer list of an imported animation at `at` (a new slot named `name`);
+   * a slot it was in before goes away. Returns the slot's id.
+   */
+  placeContent(id: string, at: Drop, name: string): string | null;
   /** Stores a logo for layer operations and returns its key. */
   putLayoutSvg(svg: string): string;
   removeImport(id: string): void;
@@ -177,6 +187,7 @@ export const initialData = (): EditorData => ({
   offsetY: 0,
   offsetX: 0,
   rotation: 0,
+  stretch: 1,
   selected: ['classic'],
   active: 'classic',
   previewBg: 'light',
@@ -194,8 +205,8 @@ export const initialData = (): EditorData => ({
 
 /** Edits of a pack sticker as remembered across sessions. */
 const packEditOf = (t: ImportedTemplate): PackEdit => {
-  const { colorMap, overlay, hidden, replace, transforms, layout } = t;
-  return { colorMap, overlay, hidden, replace, transforms, layout };
+  const { colorMap, overlay, hidden, replace, transforms, layout, paints } = t;
+  return { colorMap, overlay, hidden, replace, transforms, layout, ...(paints && Object.keys(paints).length ? { paints } : {}) };
 };
 
 /** Limits keep Favourites within the ~5 MB localStorage quota. */
@@ -216,7 +227,7 @@ export const useEditor = create<EditorData & EditorActions>()(
     (set, get) => ({
       ...initialData(),
       set: (key, value) => set({ [key]: value } as Partial<EditorData>),
-      setTransform: ({ scale, offsetX, offsetY, rotation }) => set({ scale, offsetX, offsetY, rotation }),
+      setTransform: ({ scale, offsetX, offsetY, rotation, stretch = 1 }) => set({ scale, offsetX, offsetY, rotation, stretch }),
       setColor: (role, paint) => set({ colors: { ...get().colors, [role]: paint }, presetId: null }),
       applyPreset: (preset) =>
         set({ colors: preset.colors, textFill: preset.textFill, textOutline: preset.textOutline, presetId: preset.id }),
@@ -275,14 +286,17 @@ export const useEditor = create<EditorData & EditorActions>()(
         const data = structuredClone(t.data);
         const newId = applyLayoutOp(data, op, (key) => logoArt(layoutSvgs[key]));
         if (newId === null && op.kind !== 'remove') return null;
-        const { hidden, replace, transforms } = remapEdits({ hidden: t.hidden, replace: t.replace, transforms: t.transforms }, op, t.data);
+        const { hidden, replace, transforms, paints } = remapEdits({ hidden: t.hidden, replace: t.replace, transforms: t.transforms, paints: t.paints ?? {} }, op, t.data);
         const updated: ImportedTemplate = {
           ...t,
           data,
           layout: [...t.layout, op],
           hidden,
           replace,
+          // Removing the layer the text/logo was in puts it back on top.
+          overlay: t.replace && !replace ? true : t.overlay,
           transforms: transforms as Record<string, PartXf>,
+          paints: paints as Record<string, ItemPaint>,
           palette: extractPalette(data),
         };
         set({
@@ -290,6 +304,19 @@ export const useEditor = create<EditorData & EditorActions>()(
           ...(updated.source ? { packEdits: { ...packEdits, [updated.source.uid]: packEditOf(updated) } } : {}),
         });
         return newId;
+      },
+      placeContent: (id, at, name) => {
+        const before = get().imports.find((i) => i.id === id);
+        if (!before) return null;
+        const oldSlot = before.replace && flattenParts(listParts(before.data)).some((p) => p.id === before.replace && p.slot) ? before.replace : null;
+        const insert: LayoutOp = { kind: 'insert', svg: CONTENT_SLOT, name, at };
+        const slot = get().layoutImport(id, insert);
+        if (!slot) return null;
+        // Straight to this sticker (a new slot has no counterpart in the others, so no "apply to all").
+        get().updateImport(id, applyImportOp(get().imports.find((i) => i.id === id)!, { kind: 'replace', part: slot }));
+        const stale = oldSlot ? remapId(oldSlot, insert, before.data) : null;
+        if (stale) get().layoutImport(id, { kind: 'remove', part: stale });
+        return get().imports.find((i) => i.id === id)?.replace ?? null;
       },
       addPackTemplates: (pack, templates, personal) => {
         const { imports, myPacks } = get();

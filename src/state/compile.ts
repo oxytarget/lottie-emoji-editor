@@ -2,6 +2,7 @@ import type { ArtStyle, VectorArt } from '../content/art';
 import { compose } from '../lottie/compose';
 import { checkTgs, tgsFromJson, toJson, type TgsCheck } from '../lottie/export';
 import { recolor, withOverlay } from '../lottie/imported';
+import { applyItemPaints, tagItemGradients, type ItemPaint } from '../lottie/itemPaints';
 import { stripGradientClasses } from '../lottie/paint';
 import { applyPartEdits, stripPartClasses, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
@@ -17,6 +18,7 @@ export interface ImportInput {
   hidden: string[];
   replace: string | null;
   transforms: Record<string, PartXf>;
+  paints?: Record<string, ItemPaint>;
 }
 
 /** Everything needed to build the animations — plain data so it can be sent to a Web Worker. */
@@ -29,6 +31,8 @@ export interface CompileInput {
   offsetY: number;
   offsetX: number;
   rotation: number;
+  /** Height of the text/logo relative to its width (free stretching). */
+  stretch?: number;
   imports: ImportInput[];
   /** Imported animation whose preview gets `pt-N` part classes (for tapping parts on the canvas). */
   annotate?: string | null;
@@ -44,17 +48,20 @@ export interface CompileOutput {
 }
 
 function buildImported(input: CompileInput, imp: ImportInput & { data: LottieAnimation }, annotate: boolean): LottieAnimation {
-  const { art, artStyle, scale, offsetY, offsetX, rotation } = input;
+  const { art, artStyle, scale, offsetY, offsetX, rotation, stretch } = input;
   let anim = recolor(imp.data, imp.colorMap);
-  anim = applyPartEdits(anim, { hidden: imp.hidden, replace: imp.replace, transforms: imp.transforms, annotate }, { art, artStyle, scale, offsetY, offsetX, rotation });
+  if (imp.paints) applyItemPaints(anim, imp.paints);
+  // Gradients get classes for the canvas handles before part edits change the structure.
+  if (annotate) tagItemGradients(anim);
+  anim = applyPartEdits(anim, { hidden: imp.hidden, replace: imp.replace, transforms: imp.transforms, annotate }, { art, artStyle, scale, offsetY, offsetX, rotation, stretch });
   // One copy of the user's content: on top only when no part of the animation is replaced by it.
-  if (imp.overlay && art && !imp.replace) anim = withOverlay(anim, { art, artStyle, scale, offsetY, offsetX, rotation });
+  if (imp.overlay && art && !imp.replace) anim = withOverlay(anim, { art, artStyle, scale, offsetY, offsetX, rotation, stretch });
   return anim;
 }
 
 function buildTemplate(input: CompileInput, template: (typeof BUILTIN_TEMPLATES)[number]): LottieAnimation {
-  const { art, artStyle, colors, outlineWidth, scale, offsetY, offsetX, rotation } = input;
-  return compose({ template, art, artStyle, colors, outlineWidth, scale, offsetY, offsetX, rotation });
+  const { art, artStyle, colors, outlineWidth, scale, offsetY, offsetX, rotation, stretch } = input;
+  return compose({ template, art, artStyle, colors, outlineWidth, scale, offsetY, offsetX, rotation, stretch });
 }
 
 function finish(id: string, anim: LottieAnimation, annotated = false): CompileOutput {
@@ -108,16 +115,16 @@ export function createCompiler() {
         for (const id of datas.keys()) if (!alive.has(id)) datas.delete(id);
         for (const id of cache.keys()) if (!alive.has(id) && !BUILTIN_TEMPLATES.some((t) => t.id === id)) cache.delete(id);
       }
-      const { art, artStyle, colors, outlineWidth, scale, offsetY, offsetX, rotation } = input;
-      const content = JSON.stringify({ art, artStyle, scale, offsetY, offsetX, rotation });
+      const { art, artStyle, colors, outlineWidth, scale, offsetY, offsetX, rotation, stretch } = input;
+      const content = JSON.stringify({ art, artStyle, scale, offsetY, offsetX, rotation, stretch });
       const templateKey = `${content}|${JSON.stringify({ colors, outlineWidth })}`;
       const out = BUILTIN_TEMPLATES.map((t) => cached(t.id, templateKey, () => finish(t.id, buildTemplate(input, t))));
       for (const imp of input.imports) {
         const data = imp.data ?? datas.get(imp.id);
         if (!data) continue;
         const annotate = input.annotate === imp.id;
-        const { colorMap, overlay, hidden, replace, transforms } = imp;
-        const key = `${content}|${JSON.stringify({ colorMap, overlay, hidden, replace, transforms, annotate })}`;
+        const { colorMap, overlay, hidden, replace, transforms, paints } = imp;
+        const key = `${content}|${JSON.stringify({ colorMap, overlay, hidden, replace, transforms, paints, annotate })}`;
         out.push(cached(imp.id, key, () => finish(imp.id, buildImported(input, { ...imp, data }, annotate), annotate)));
       }
       return out;

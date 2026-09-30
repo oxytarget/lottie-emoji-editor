@@ -82,6 +82,7 @@ export async function loadPack(name: string, personal: boolean): Promise<void> {
       hidden: saved?.hidden ?? defaults.hidden,
       replace: saved?.replace ?? defaults.replace,
       transforms: saved?.transforms ?? {},
+      paints: saved?.paints ?? {},
       source: { pack: name, uid: item.uid, emoji: item.emoji || '⭐' },
       defaults,
     };

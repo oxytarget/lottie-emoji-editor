@@ -1,4 +1,7 @@
 import { extractPalette } from '../lottie/imported';
+import type { ItemPaint } from '../lottie/itemPaints';
+import { resolveItem } from '../lottie/itemPaints';
+import { parentOf } from '../lottie/layout';
 import { matchColors, matchPart } from '../lottie/packs';
 import { isIdentityXf, type PartXf } from '../lottie/parts';
 import type { ImportedTemplate } from './store';
@@ -14,9 +17,11 @@ export type ImportOp =
   | { kind: 'hide'; part: string; hidden: boolean }
   | { kind: 'replace'; part: string | null }
   | { kind: 'transform'; part: string; xf: PartXf | null }
+  /** Colour/gradient of one fill or stroke of a layer (null = back to the file's). */
+  | { kind: 'paint'; item: string; paint: ItemPaint | null }
   | { kind: 'partsReset' };
 
-type Patch = Partial<Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms' | 'data' | 'layout' | 'palette'>>;
+type Patch = Partial<Pick<ImportedTemplate, 'colorMap' | 'overlay' | 'hidden' | 'replace' | 'transforms' | 'paints' | 'data' | 'layout' | 'palette'>>;
 
 const isAncestor = (a: string, b: string) => b.startsWith(`${a}/`) || b.startsWith(`${a}>`);
 
@@ -26,7 +31,7 @@ export function applyImportOp(t: ImportedTemplate, op: ImportOp): Patch {
     case 'color':
       return { colorMap: { ...t.colorMap, [op.from]: op.to } };
     case 'colorsReset':
-      return { colorMap: {} };
+      return { colorMap: {}, paints: {} };
     case 'overlay':
       // The content appears once: on top instead of inside a replaced part.
       return op.value ? { overlay: true, replace: null } : { overlay: false };
@@ -42,10 +47,14 @@ export function applyImportOp(t: ImportedTemplate, op: ImportOp): Patch {
       const { [op.part]: _old, ...rest } = t.transforms;
       return { transforms: op.xf && !isIdentityXf(op.xf) ? { ...rest, [op.part]: op.xf } : rest };
     }
+    case 'paint': {
+      const { [op.item]: _old, ...rest } = t.paints ?? {};
+      return { paints: op.paint && Object.keys(op.paint).length ? { ...rest, [op.item]: op.paint } : rest };
+    }
     case 'partsReset': {
       // Back to the imported structure too (inserted logos and moved layers go away).
       const structure = t.layout.length ? { data: t.base, layout: [], palette: extractPalette(t.base) } : {};
-      return { ...structure, hidden: t.defaults?.hidden ?? [], replace: t.defaults?.replace ?? null, overlay: t.defaults?.overlay ?? false, transforms: {} };
+      return { ...structure, hidden: t.defaults?.hidden ?? [], replace: t.defaults?.replace ?? null, overlay: t.defaults?.overlay ?? false, transforms: {}, paints: {} };
     }
   }
 }
@@ -78,6 +87,15 @@ export function importOpFor(source: ImportedTemplate, target: ImportedTemplate, 
     }
     case 'color':
       return matchColors(target.palette, op.from).length ? op : null;
+    case 'paint': {
+      // The same item of the same-shaped layer, if it is the same kind of paint.
+      const { parent, index } = parentOf(op.item);
+      const owner = mapPart(source, target, parent);
+      const item = owner ? `${owner}/g${index}` : null;
+      const a = resolveItem(source.data, op.item);
+      const b = item ? resolveItem(target.data, item) : null;
+      return item && a && b && a.ty === b.ty ? { ...op, item } : null;
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useT } from '../state/useT';
+import { LockIcon, UnlockIcon } from './icons';
 
 /** Transform of the user's text/logo, edited directly on the preview. */
 export interface ContentXf {
@@ -7,6 +8,8 @@ export interface ContentXf {
   offsetX: number;
   offsetY: number;
   rotation: number;
+  /** Height relative to width (free stretching; 1 = proportional). */
+  stretch: number;
 }
 
 interface Props {
@@ -23,12 +26,18 @@ interface Props {
   onActive?(active: boolean): void;
   /** Double tap / double click on the stage (client coordinates) — used to grab the element under it. */
   onPick?(x: number, y: number): void;
+  /** Proportions locked: corners resize evenly; unlocked: corners and edges stretch freely. */
+  locked: boolean;
+  onToggleLock(): void;
 }
 
-type Mode = 'move' | 'scale' | 'rotate' | 'pinch' | 'scroll';
+type Mode = 'move' | 'scale' | 'rotate' | 'pinch' | 'scroll' | 'stretch';
+/** Which way a free stretch goes: both (corner), width or height (edges). */
+type Axis = 'xy' | 'x' | 'y';
 
 interface Gesture {
   mode: Mode;
+  axis: Axis;
   /** Value when the gesture began (a tap that moves nothing commits nothing). */
   initial: ContentXf;
   start: ContentXf;
@@ -41,7 +50,7 @@ interface Gesture {
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
-const LIMITS = { scale: [0.2, 3], offset: [-260, 260] } as const;
+const LIMITS = { scale: [0.2, 3], offset: [-260, 260], stretch: [0.2, 5] } as const;
 
 function normalize(xf: ContentXf): ContentXf {
   let r = ((xf.rotation % 360) + 540) % 360 - 180;
@@ -52,10 +61,28 @@ function normalize(xf: ContentXf): ContentXf {
     offsetX: Math.round(clamp(xf.offsetX, LIMITS.offset[0], LIMITS.offset[1])),
     offsetY: Math.round(clamp(xf.offsetY, LIMITS.offset[0], LIMITS.offset[1])),
     rotation: Math.round(r === -180 ? 180 : r),
+    stretch: Math.round(clamp(xf.stretch, LIMITS.stretch[0], LIMITS.stretch[1]) * 100) / 100,
   };
 }
 
-const sameXf = (a: ContentXf, b: ContentXf) => a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation;
+const sameXf = (a: ContentXf, b: ContentXf) =>
+  a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation && a.stretch === b.stretch;
+
+/** A screen vector in the content's own (unrotated) axes. */
+function local(v: { x: number; y: number }, rotation: number) {
+  const a = (-rotation * Math.PI) / 180;
+  return { x: v.x * Math.cos(a) - v.y * Math.sin(a), y: v.x * Math.sin(a) + v.y * Math.cos(a) };
+}
+
+/** Free stretch: how the size changes along the content's own axes as a handle moves from `o` to `p`. */
+export function stretched(s: ContentXf, axis: Axis, center: { x: number; y: number }, o: { x: number; y: number }, p: { x: number; y: number }): ContentXf {
+  const v0 = local({ x: o.x - center.x, y: o.y - center.y }, s.rotation);
+  const v1 = local({ x: p.x - center.x, y: p.y - center.y }, s.rotation);
+  // A handle that starts (almost) on an axis cannot measure that axis.
+  const fx = axis !== 'y' && Math.abs(v0.x) > 8 ? Math.max(Math.abs(v1.x), 2) / Math.abs(v0.x) : 1;
+  const fy = axis !== 'x' && Math.abs(v0.y) > 8 ? Math.max(Math.abs(v1.y), 2) / Math.abs(v0.y) : 1;
+  return { ...s, scale: s.scale * fx, stretch: (s.stretch * fy) / fx };
+}
 
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 const angle = (a: { x: number; y: number }, b: { x: number; y: number }) => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
@@ -65,9 +92,10 @@ const mid = (pts: { x: number; y: number }[]) => ({ x: (pts[0].x + pts[1].x) / 2
  * Selection box over the user's text/logo: drag to move, corner handles to resize, top handle to rotate,
  * two fingers to pinch/rotate, mouse wheel to resize, arrow keys to nudge.
  */
-export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive, onPick }: Props) {
+export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive, onPick, locked, onToggleLock }: Props) {
   const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
+  const lockRef = useRef<HTMLButtonElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const latest = useRef(value);
   const [selected, setSelected] = useState(false);
@@ -103,8 +131,10 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
           box.style.transform = `translate(${r.left - s.left - pad}px, ${r.top - s.top - pad}px)`;
           box.style.width = `${r.width + pad * 2}px`;
           box.style.height = `${r.height + pad * 2}px`;
+          if (lockRef.current) lockRef.current.style.display = '';
         } else {
           box.style.display = 'none';
+          if (lockRef.current) lockRef.current.style.display = 'none';
         }
       }
       raf = requestAnimationFrame(tick);
@@ -120,6 +150,12 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
     let down: { x: number; y: number; t: number } | null = null;
     let last: { x: number; y: number; t: number } | null = null;
     const onDown = (e: PointerEvent) => {
+      // Taps on on-canvas buttons and gradient dots are not taps on the animation.
+      if ((e.target as Element | null)?.closest?.('.canvas-lock, .grad-editor button, .grad-line-hit')) {
+        down = null;
+        last = null;
+        return;
+      }
       if (e.isPrimary) down = { x: e.clientX, y: e.clientY, t: performance.now() };
     };
     const onUp = (e: PointerEvent) => {
@@ -149,7 +185,7 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
   // Deselect when tapping elsewhere.
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setSelected(false);
+      if (boxRef.current && !boxRef.current.contains(e.target as Node) && !lockRef.current?.contains(e.target as Node)) setSelected(false);
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
@@ -171,7 +207,7 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
     onLive(latest.current);
   };
 
-  const begin = (mode: Mode, e: React.PointerEvent) => {
+  const begin = (mode: Mode, e: React.PointerEvent, axis: Axis = 'xy') => {
     const g = gesture.current;
     if (g) {
       // A second finger turns any gesture into pinch + rotate.
@@ -184,6 +220,7 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
     const p = { x: e.clientX, y: e.clientY };
     gesture.current = {
       mode,
+      axis,
       initial: latest.current,
       start: latest.current,
       k: unitsPerPx(),
@@ -196,13 +233,13 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
     onActive?.(true);
   };
 
-  const onPointerDown = (mode: Mode) => (e: React.PointerEvent) => {
+  const onPointerDown = (mode: Mode, axis?: Axis) => (e: React.PointerEvent) => {
     if (e.button > 0) return;
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     setSelected(true);
-    begin(mode, e);
+    begin(mode, e, axis);
   };
 
   // Pointers anywhere on the stage: a second finger for pinch, or one finger to scroll the page.
@@ -217,7 +254,7 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
         root.setPointerCapture?.(e.pointerId);
       } else if (!g && e.pointerType === 'touch' && !boxRef.current?.contains(e.target as Node)) {
         const p = { x: e.clientX, y: e.clientY };
-        gesture.current = { mode: 'scroll', initial: latest.current, start: latest.current, k: 1, center: p, pointers: new Map([[e.pointerId, p]]), origin: new Map([[e.pointerId, p]]), last: p };
+        gesture.current = { mode: 'scroll', axis: 'xy', initial: latest.current, start: latest.current, k: 1, center: p, pointers: new Map([[e.pointerId, p]]), origin: new Map([[e.pointerId, p]]), last: p };
       }
     };
     root.addEventListener('pointerdown', down);
@@ -243,6 +280,7 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
         const m0 = mid([a0, b0]);
         const m1 = mid([a1, b1]);
         emit({
+          ...s,
           scale: s.scale * (dist(a1, b1) / Math.max(dist(a0, b0), 1)),
           rotation: s.rotation + angle(a1, b1) - angle(a0, b0),
           offsetX: s.offsetX + (m1.x - m0.x) * g.k,
@@ -253,6 +291,7 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
       const o = g.origin.get(e.pointerId)!;
       if (g.mode === 'move') emit({ ...s, offsetX: s.offsetX + (p.x - o.x) * g.k, offsetY: s.offsetY + (p.y - o.y) * g.k });
       else if (g.mode === 'scale') emit({ ...s, scale: s.scale * (dist(p, g.center) / Math.max(dist(o, g.center), 1)) });
+      else if (g.mode === 'stretch') emit(stretched(s, g.axis, g.center, o, p));
       else if (g.mode === 'rotate') emit({ ...s, rotation: s.rotation + angle(g.center, p) - angle(g.center, o) });
     };
     const up = (e: PointerEvent) => {
@@ -322,9 +361,26 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
 
   return (
     <div className="canvas-editor">
+      <button
+        ref={lockRef}
+        type="button"
+        className={`canvas-lock${locked ? '' : ' is-free'}`}
+        aria-pressed={!locked}
+        aria-label={locked ? t('ratioLocked') : t('ratioFree')}
+        title={locked ? t('ratioLocked') : t('ratioFree')}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => {
+          onToggleLock();
+          // Show the handles right away (unlocked: with the edge ones).
+          setSelected(true);
+        }}
+        style={{ display: 'none' }}
+      >
+        {locked ? <LockIcon width={18} height={18} /> : <UnlockIcon width={18} height={18} />}
+      </button>
       <div
         ref={boxRef}
-        className={`canvas-box${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}`}
+        className={`canvas-box${selected ? ' is-selected' : ''}${active ? ' is-active' : ''}${locked ? '' : ' is-free'}`}
         role="application"
         aria-label={t('canvasHint')}
         tabIndex={0}
@@ -334,8 +390,13 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
         style={{ display: 'none' }}
       >
         {(['nw', 'ne', 'se', 'sw'] as const).map((c) => (
-          <span key={c} className={`canvas-handle is-${c}`} onPointerDown={onPointerDown('scale')} aria-hidden />
+          <span key={c} className={`canvas-handle is-${c}`} onPointerDown={locked ? onPointerDown('scale') : onPointerDown('stretch', 'xy')} aria-hidden />
         ))}
+        {/* Unlocked: edges change only the width or only the height. */}
+        {!locked &&
+          (['n', 'e', 's', 'w'] as const).map((c) => (
+            <span key={c} className={`canvas-handle is-edge is-${c}`} onPointerDown={onPointerDown('stretch', c === 'n' || c === 's' ? 'y' : 'x')} aria-hidden />
+          ))}
         <span className="canvas-rotate" onPointerDown={onPointerDown('rotate')} aria-hidden>
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" />

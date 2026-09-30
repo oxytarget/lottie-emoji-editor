@@ -3845,3 +3845,170 @@ div.note p + p {
     white-space: nowrap;
   }
 }
+
+/* Proportions lock on the canvas */
+.canvas-lock {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  box-shadow: var(--shadow-sm);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: fade-in 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.canvas-lock:active {
+  transform: scale(0.9);
+}
+
+.canvas-lock.is-free {
+  color: var(--on-accent, #fff);
+  background: var(--accent);
+}
+
+.canvas-lock:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Edge handles (free stretching): short bars in the middle of each side. */
+.canvas-handle.is-edge {
+  border-radius: 6px;
+}
+
+.canvas-handle.is-n,
+.canvas-handle.is-s {
+  left: calc(50% - 12px);
+  width: 24px;
+  height: 12px;
+  cursor: ns-resize;
+}
+
+.canvas-handle.is-e,
+.canvas-handle.is-w {
+  top: calc(50% - 12px);
+  width: 12px;
+  height: 24px;
+  cursor: ew-resize;
+}
+
+.canvas-handle.is-n { top: -7px; }
+.canvas-handle.is-s { bottom: -7px; }
+.canvas-handle.is-e { right: -7px; }
+.canvas-handle.is-w { left: -7px; }
+
+/* The rotate handle sits above the top edge handle; keep them apart. */
+.canvas-box.is-free .canvas-rotate {
+  top: -48px;
+}
+
+.canvas-box.is-free .canvas-rotate::before {
+  height: 20px;
+}
+
+/* The user's text/logo in the layer strip, and its slot in the list */
+.fav-chip.content-chip {
+  padding-left: 8px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.fav-chip.content-chip svg {
+  flex: none;
+}
+
+.part-thumb.is-slot {
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* "Layer colours" window of the selected layer */
+.layer-paints {
+  justify-self: stretch;
+  display: grid;
+  /* Long labels shorten (ellipsis) instead of widening the whole layer list. */
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--card);
+  border: 1px solid var(--accent-line);
+  animation: pop-in 0.25s var(--ease-out);
+}
+
+.layer-paints-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-strong);
+}
+
+.layer-paints .hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.layer-paint {
+  /* Name above the colours, buttons on the right — fits a phone with any number of stops. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'label tools' 'swatches tools';
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 12px;
+  transition: background-color 0.2s ease;
+}
+
+.layer-paint.is-active {
+  background: var(--accent-soft);
+}
+
+.layer-paint .label {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.layer-paint-swatches {
+  grid-area: swatches;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.layer-paint-tools {
+  grid-area: tools;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layer-paint-anim {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 9px;
+  color: var(--warn);
+  vertical-align: middle;
+}

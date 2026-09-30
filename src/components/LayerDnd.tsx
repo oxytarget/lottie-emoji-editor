@@ -1,20 +1,20 @@
 import { useRef, useState } from 'react';
 import { haptic } from '../lib/telegram';
-import { checkOp, INSERTED, parentOf, remapId, type Drop, type LayoutOp } from '../lottie/layout';
+import { checkOp, CONTENT_SLOT, INSERTED, parentOf, remapId, type Drop, type LayoutOp } from '../lottie/layout';
 import type { Part } from '../lottie/parts';
 import { useEditor, type FavLogo, type ImportedTemplate } from '../state/store';
 import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
 import { FavEditBar, FavEditToggle, useFavSelection } from './FavEdit';
-import { CheckIcon, StarIcon } from './icons';
+import { CheckIcon, StarIcon, TypeIcon } from './icons';
 
 /**
- * Drag and drop in the layer list (finger or mouse): favourite logos from the strip above the list, and
- * layers by their handle. Dropping on the upper/lower edge of a row puts the item before/after it; dropping
+ * Drag and drop in the layer list (finger or mouse): the user's text/logo and favourite logos from the strip
+ * above the list, and layers by their handle. Dropping on the upper/lower edge of a row puts the item before/after it; dropping
  * on the middle of a group, shape layer or precomp puts it inside (it then moves with that part).
  */
 
-export type DragSource = { kind: 'logo'; logo: FavLogo } | { kind: 'part'; part: Part };
+export type DragSource = { kind: 'logo'; logo: FavLogo } | { kind: 'part'; part: Part } | { kind: 'content'; name: string };
 export type Hover = { id: string; where: 'before' | 'after' | 'inside' } | { id: ''; where: 'end' };
 
 interface DragState {
@@ -36,9 +36,19 @@ function dropOf(hover: Hover, imp: ImportedTemplate): Drop {
 }
 
 function opFor(source: DragSource, at: Drop, logoKey: string): LayoutOp {
-  return source.kind === 'logo'
-    ? { kind: 'insert', svg: logoKey, name: `${INSERTED}${source.logo.name}`, at }
-    : { kind: 'move', part: source.part.id, at };
+  if (source.kind === 'logo') return { kind: 'insert', svg: logoKey, name: `${INSERTED}${source.logo.name}`, at };
+  if (source.kind === 'content') return { kind: 'insert', svg: CONTENT_SLOT, name: `${INSERTED}${source.name}`, at };
+  return { kind: 'move', part: source.part.id, at };
+}
+
+/** Puts the user's text/logo at `at` and keeps it grabbed (its frame shows on the canvas). */
+export function placeContent(imp: ImportedTemplate, at: Drop, name: string): string | null {
+  const slot = useEditor.getState().placeContent(imp.id, at, `${INSERTED}${name}`);
+  if (slot) {
+    useUi.getState().setGrab({ id: imp.id, part: slot });
+    haptic();
+  }
+  return slot;
 }
 
 /** A move that would leave the part where it is. */
@@ -141,6 +151,10 @@ export function useLayerDnd(opts: { imp: ImportedTemplate; parts: readonly Part[
       const { hover, valid } = hoverAt(ev.clientX, ev.clientY, source);
       if (!hover || !valid) return;
       const { imp } = latest.current;
+      if (source.kind === 'content') {
+        placeContent(imp, dropOf(hover, imp), source.name);
+        return;
+      }
       const key = source.kind === 'logo' ? useEditor.getState().putLayoutSvg(source.logo.svg) : '';
       applyLayerOp(imp, opFor(source, dropOf(hover, imp), key));
     };
@@ -162,8 +176,37 @@ export function DragGhost({ drag }: { drag: DragState | null }) {
   return (
     <div className={`drag-ghost${drag.valid ? '' : ' is-invalid'}`} style={{ transform: `translate(${drag.x + 14}px, ${drag.y + 14}px)` }} aria-hidden>
       {drag.source.kind === 'logo' ? <img src={svgUrl(drag.source.logo.svg)} alt="" /> : null}
-      <span>{drag.source.kind === 'logo' ? drag.source.logo.name : drag.source.part.name}</span>
+      <span>{drag.source.kind === 'logo' ? drag.source.logo.name : drag.source.kind === 'content' ? drag.source.name : drag.source.part.name}</span>
     </div>
+  );
+}
+
+/** The user's text/logo — dragged into the list it goes between layers or into a group (a tap puts it on top). */
+function ContentChip({ imp, onStart }: { imp: ImportedTemplate; onStart: (source: DragSource, e: React.PointerEvent, onTap?: () => void) => void }) {
+  const t = useT();
+  const mode = useEditor((s) => s.mode);
+  const text = useEditor((s) => s.text);
+  const logo = useEditor((s) => s.logo);
+  const name = mode === 'logo' ? t('layerYourLogo') : t('layerYourText');
+  const preview = mode === 'logo' ? logo?.name : text.trim().split(/\s+/).join(' ');
+  if (mode === 'logo' ? !logo : !text.trim()) return null;
+  const top = () => placeContent(imp, { parent: '', index: 0 }, name);
+  return (
+    <button
+      type="button"
+      className="fav-chip content-chip"
+      title={preview ?? name}
+      aria-label={`${t('layerAddContent')}: ${name}`}
+      onPointerDown={(e) => onStart({ kind: 'content', name }, e, top)}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        top();
+      }}
+    >
+      {mode === 'logo' && logo ? <img src={svgUrl(logo.svg)} alt="" draggable={false} /> : <TypeIcon width={18} height={18} />}
+      <span>{preview || name}</span>
+    </button>
   );
 }
 
@@ -173,16 +216,16 @@ export function FavLogoStrip({ imp, onStart }: { imp: ImportedTemplate; onStart:
   const favs = useEditor((s) => s.favLogos);
   const removeMany = useEditor((s) => s.removeFavLogos);
   const sel = useFavSelection();
-  if (!favs.length) return <p className="hint">{t('favLayersEmpty')}</p>;
   return (
     <div className={`fav-strip${sel.editing ? ' is-editing' : ''}`}>
       <div className="fav-head">
         <span className="label">
-          <StarIcon width={14} height={14} filled /> {t('favorites')}
+          <StarIcon width={14} height={14} filled /> {t('layerStripTitle')}
         </span>
-        <FavEditToggle sel={sel} />
+        {favs.length > 0 && <FavEditToggle sel={sel} />}
       </div>
       <div className="fav-chips">
+        {!sel.editing && <ContentChip imp={imp} onStart={onStart} />}
         {favs.map((f) => (
           <button
             key={f.id}
@@ -219,7 +262,7 @@ export function FavLogoStrip({ imp, onStart }: { imp: ImportedTemplate; onStart:
       {sel.editing ? (
         <FavEditBar sel={sel} ids={favs.map((f) => f.id)} onDelete={removeMany} confirmClear={t('favClearLogosConfirm')} />
       ) : (
-        <p className="hint">{t('favDragHint')}</p>
+        <p className="hint">{favs.length ? t('layerStripHint') : t('layerStripHintNoFavs')}</p>
       )}
     </div>
   );

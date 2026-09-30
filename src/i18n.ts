@@ -330,16 +330,19 @@ const dict = {
   layerRemove: { uk: 'Видалити', ru: 'Удалить', en: 'Delete' },
   layerDrag: { uk: 'Перетягнути', ru: 'Перетащить', en: 'Drag' },
   layerAddLogo: { uk: 'Додати лого в анімацію', ru: 'Добавить лого в анимацию', en: 'Add the logo to the animation' },
-  favDragHint: {
-    uk: 'Перетягніть лого між шарами або на шар чи групу — тоді воно рухатиметься разом з нею. Торкніться — додасться зверху. Шари тягніть за ⋮⋮.',
-    ru: 'Перетащите лого между слоями или на слой либо группу — тогда оно будет двигаться вместе с ней. Коснитесь — добавится сверху. Слои тяните за ⋮⋮.',
-    en: 'Drag a logo between layers, or onto a layer or group to move with it. Tap to add it on top. Drag layers by ⋮⋮.',
+  layerStripTitle: { uk: 'Ваш текст і обране', ru: 'Ваш текст и избранное', en: 'Your text & favourites' },
+  layerYourText: { uk: 'Ваш текст', ru: 'Ваш текст', en: 'Your text' },
+  layerYourLogo: { uk: 'Ваше лого', ru: 'Ваше лого', en: 'Your logo' },
+  layerAddContent: { uk: 'Перенести в шари', ru: 'Перенести в слои', en: 'Move into the layers' },
+  layerStripHint: {
+    uk: 'Перетягніть свій текст чи лого між шарами або на шар чи групу — тоді воно рухатиметься разом з нею. Торкніться — додасться зверху. Шари тягніть за ⋮⋮.',
+    ru: 'Перетащите свой текст или лого между слоями или на слой либо группу — тогда он будет двигаться вместе с ней. Коснитесь — добавится сверху. Слои тяните за ⋮⋮.',
+    en: 'Drag your text or a logo between layers, or onto a layer or group to move with it. Tap to add it on top. Drag layers by ⋮⋮.',
   },
-
-  favLayersEmpty: {
-    uk: 'Збережіть лого в «Обране» (вкладка «Текст» → «Лого SVG» або «Лого в обране» тут), щоб перетягувати його в шари.',
-    ru: 'Сохраните лого в «Избранное» (вкладка «Текст» → «Лого SVG» или «Лого в избранное» здесь), чтобы перетаскивать его в слои.',
-    en: 'Save logos to Favourites (the Text tab → SVG logo, or “Logo to favourites” here) to drag them into layers.',
+  layerStripHintNoFavs: {
+    uk: 'Перетягніть свій текст між шарами або на шар чи групу — він рухатиметься разом з нею. Лого з «Обраного» тягнуться так само.',
+    ru: 'Перетащите свой текст между слоями или на слой либо группу — он будет двигаться вместе с ней. Лого из «Избранного» перетаскиваются так же.',
+    en: 'Drag your text between layers, or onto a layer or group to move with it. Logos from Favourites drag the same way.',
   },
   favColorsBar: { uk: 'Обрані кольори', ru: 'Избранные цвета', en: 'Favourite colours' },
   favColorsHint: {
@@ -383,6 +386,30 @@ const dict = {
   gradLine: { uk: 'Лінія градієнта — тягніть, щоб зсунути', ru: 'Линия градиента — тяните, чтобы сдвинуть', en: 'Gradient line — drag to move it' },
   gradReset: { uk: 'Скинути', ru: 'Сбросить', en: 'Reset' },
   gradDone: { uk: 'Готово', ru: 'Готово', en: 'Done' },
+  layerColors: { uk: 'Кольори шару', ru: 'Цвета слоя', en: 'Layer colours' },
+  layerFill: { uk: 'Заливка', ru: 'Заливка', en: 'Fill' },
+  layerStroke: { uk: 'Обводка', ru: 'Обводка', en: 'Stroke' },
+  layerGradFill: { uk: 'Градієнт', ru: 'Градиент', en: 'Gradient' },
+  layerGradStroke: { uk: 'Градієнт обводки', ru: 'Градиент обводки', en: 'Stroke gradient' },
+  layerAnimated: {
+    uk: 'Колір анімований — після зміни стане сталим',
+    ru: 'Цвет анимирован — после изменения станет постоянным',
+    en: 'This colour is animated — editing it makes it still',
+  },
+  layerNoColors: { uk: 'У цього шару немає власних кольорів.', ru: 'У этого слоя нет своих цветов.', en: 'This layer has no colours of its own.' },
+  layerContentColors: { uk: 'Тут ваш текст/лого — його кольори:', ru: 'Здесь ваш текст/лого — его цвета:', en: 'Your text/logo is here — its colours:' },
+  layerPaintReset: { uk: 'Повернути колір з файлу', ru: 'Вернуть цвет из файла', en: 'Back to the file’s colour' },
+  layerMore: { uk: 'і ще {n} — оберіть вкладений шар', ru: 'и ещё {n} — выберите вложенный слой', en: '{n} more — pick a nested layer' },
+  ratioLocked: {
+    uk: 'Пропорції зафіксовано — торкніться, щоб розтягувати вільно',
+    ru: 'Пропорции зафиксированы — коснитесь, чтобы растягивать свободно',
+    en: 'Proportions locked — tap to stretch freely',
+  },
+  ratioFree: {
+    uk: 'Вільне розтягування — торкніться, щоб зберігати пропорції',
+    ru: 'Свободное растягивание — коснитесь, чтобы сохранять пропорции',
+    en: 'Free stretching — tap to keep proportions',
+  },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;
