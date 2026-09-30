@@ -8,6 +8,7 @@ import { packTexts, pickLang, validateInitData } from './telegram.js';
 import { toEmojiCanvas } from './tgs.js';
 
 const MAX_FILES = 50; // createNewStickerSet accepts up to 50 initial stickers
+const MAX_PACE_MS = 15_000;
 const MAX_TGS_BYTES = 64 * 1024;
 const DEFAULT_EMOJI = '⭐';
 
@@ -145,7 +146,11 @@ export async function handlePack(req: Request, env: Env, cors: Record<string, st
     let name = existing;
 
     if (existing) {
+      // Telegram adds custom emoji one by one and punishes bursts with long waits: the client sets the pace.
+      // The pause comes before every sticker, the first one too — the previous request may have just added one.
+      const pace = Math.min(Math.max(Number(form.get('pace')) || 0, 0), MAX_PACE_MS);
       for (let i = 0; i < files.length; i++) {
+        if (pace) await new Promise((r) => setTimeout(r, pace));
         try {
           try {
             await addToSet(env, userId, name, variants[canvas][i]);

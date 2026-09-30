@@ -157,6 +157,8 @@ export async function createPack(opts: {
   total?: number;
   /** The pack was created by an earlier request of the same job ("created", not "added to"). */
   fresh?: boolean;
+  /** Pause between stickers added to an existing pack, ms. */
+  pace?: number;
 }) {
   return call<PackResult>('/api/pack', () => {
     const form = new FormData();
@@ -166,6 +168,7 @@ export async function createPack(opts: {
     if (opts.notify === false) form.set('notify', '0');
     if (opts.total) form.set('total', String(opts.total));
     if (opts.fresh) form.set('fresh', '1');
+    if (opts.pace) form.set('pace', String(Math.round(opts.pace)));
     for (const item of opts.items) {
       form.append('files', blobOf(item), item.name);
       form.append('emojis', item.emoji);
@@ -174,9 +177,17 @@ export async function createPack(opts: {
   });
 }
 
-/** Telegram takes up to 50 stickers when creating a pack; later ones are added one by one, so smaller batches. */
-const CREATE_BATCH = 30;
+/**
+ * Telegram creates a pack with up to 50 stickers in one call, but adds the rest one by one and answers bursts
+ * with long waits (minutes, growing with every burst). So: 50 at once, then a steady pace that slows down after
+ * each warning and speeds up again while things go well.
+ */
+export const CREATE_BATCH = 50;
 const ADD_BATCH = 10;
+export const PACE = { start: 800, min: 800, max: 12_000 };
+/** Stickers per request so that a paced request stays well within the function time limit. */
+const addBatch = (pace: number) => Math.max(1, Math.min(ADD_BATCH, Math.floor(40_000 / (pace + 500))));
+/* The backend pauses `pace` ms before each sticker it adds (the first of a request too), so requests never burst. */
 
 /**
  * Creates (or extends) a pack with any number of emoji: the first request creates it, the next ones add the rest.
@@ -201,8 +212,9 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
   const fresh = !opts.set;
   let done = 0;
   let waited = 0;
+  let pace = PACE.start;
   while (queue.length) {
-    const batch = takeBatch(queue, name ? ADD_BATCH : CREATE_BATCH);
+    const batch = takeBatch(queue, name ? addBatch(pace) : CREATE_BATCH);
     const last = batch.length === queue.length;
     const res = await createPack({
       title: opts.title,
@@ -211,7 +223,9 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
       notify: last,
       total: opts.total ?? opts.items.length,
       fresh: !!opts.fresh || (fresh && !!name),
+      pace: name ? pace : undefined,
     });
+    pace = res.ok ? Math.max(PACE.min, pace * 0.85) : res.error === 'flood' ? Math.min(PACE.max, Math.max(pace * 2, 2000)) : pace;
     const added = res.ok ? batch.length : Math.min(res.added ?? 0, batch.length);
     const packName = res.ok ? res.data.name : res.name;
     if (added && packName) {
@@ -284,4 +298,36 @@ export async function fetchBotPacks(): Promise<Array<{ name: string; title: stri
   } catch {
     return [];
   }
+}
+
+/**
+ * Several packs of up to 50 emoji ("Title 1", "Title 2", …): each is created in one call, so there is
+ * nothing to wait for. `onPack` gets every finished pack.
+ */
+export async function createPacksSplit<T extends OutgoingFile & { emoji: string }>(
+  opts: { title: string; items: readonly T[] },
+  onProgress: (p: JobProgress) => void,
+  onPack: (items: T[], pack: PackResult) => void,
+): Promise<JobResult<PackResult[]>> {
+  const packs: PackResult[] = [];
+  const chunks: T[][] = [];
+  for (let i = 0; i < opts.items.length; i += CREATE_BATCH) chunks.push(opts.items.slice(i, i + CREATE_BATCH));
+  const base = Array.from(opts.title).slice(0, 58).join('').trim() || 'Emoji Studio';
+  let done = 0;
+  for (const [i, chunk] of chunks.entries()) {
+    const title = chunks.length > 1 ? `${base} ${i + 1}` : base;
+    let packDone = 0;
+    const res = await createPackAll(
+      { title, items: chunk },
+      (p) => onProgress({ ...p, done: done + p.done, total: opts.items.length }),
+      (items, pack) => {
+        packDone += items.length;
+        if (packDone === chunk.length) onPack(chunk, pack);
+      },
+    );
+    if (!res.ok) return { ...res, data: packs };
+    packs.push(res.data);
+    done += chunk.length;
+  }
+  return { ok: true, data: packs };
 }

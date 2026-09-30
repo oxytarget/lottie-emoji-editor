@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { I18nKey } from '../i18n';
-import { canUseBot, createPackAll, sendAllToChat, type BotError, type JobProgress, type PackResult } from '../lib/botApi';
+import { canUseBot, CREATE_BATCH, createPackAll, createPacksSplit, sendAllToChat, type BotError, type JobProgress, type PackResult } from '../lib/botApi';
 import { closeApp, haptic, isTelegram, openExternal, openTelegramLink } from '../lib/telegram';
 import { downloadBlob, formatKb, slug, tgsFromJson, zipFiles, type TgsCheck } from '../lottie/export';
 import { useEditor } from '../state/store';
 import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
-import { MotionButton, Segmented } from './controls';
+import { MotionButton, Segmented, Toggle } from './controls';
 import { CheckIcon, CloseIcon, DownloadIcon, SendIcon, SparkleIcon, WarningIcon } from './icons';
 import { LottieView } from './LottieView';
 import { emojiName } from './TemplateGrid';
@@ -45,16 +45,12 @@ type Busy = null | string;
 type Result =
   | { kind: 'none' }
   | { kind: 'pack'; pack: PackResult; added: boolean }
+  | { kind: 'packs'; packs: PackResult[] }
   | { kind: 'sent' }
   | { kind: 'error'; job: 'pack' | 'send'; error: BotError; detail?: string; done?: number; total?: number; pack?: PackResult };
 
-/** Emoji already delivered by a job that stopped half-way (the next press continues without duplicates). */
-interface Resume {
-  job: 'pack' | 'send';
-  /** Pack the emoji were added to. */
-  pack?: string;
-  /** That pack was created by the stopped job (so finishing it says "created"). */
-  created?: boolean;
+/** Files already sent by a "send all" that stopped half-way (the next press sends the rest). */
+interface SendResume {
   ids: string[];
 }
 
@@ -70,19 +66,28 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
   const [busy, setBusy] = useState<Busy>(null);
   const [result, setResult] = useState<Result>({ kind: 'none' });
   const [progress, setProgress] = useState<JobProgress | null>(null);
-  const [resume, setResume] = useState<Resume | null>(null);
+  const [sendResume, setSendResume] = useState<SendResume | null>(null);
+  // A big pack interrupted earlier (even in another session) continues where it stopped.
+  const packJob = useEditor((s) => s.packJob);
+  const setStore = useEditor((s) => s.set);
+  const [split, setSplit] = useState(false);
   // Inside Telegram the bot creates packs and sends files; in a browser the files are downloaded.
   const viaBot = canUseBot();
 
   const defaultTitle = (mode === 'logo' ? logo?.name.replace(/\.svg$/i, '') : text.split('\n')[0])?.trim().slice(0, 64) || 'Emoji Studio';
   const [title, setTitle] = useState(defaultTitle);
-  const [target, setTarget] = useState<string>(NEW_PACK);
+  const [target, setTarget] = useState<string>(() =>
+    packJob && packs.some((p) => p.name === packJob.pack) && emojis.some((e) => !packJob.ids.includes(e.id)) && emojis.some((e) => packJob.ids.includes(e.id))
+      ? packJob.pack
+      : NEW_PACK,
+  );
   const [emojiFor, setEmojiFor] = useState<Record<string, string>>(() => Object.fromEntries(emojis.map((e) => [e.id, e.emoji])));
   const targetPack = packs.find((p) => p.name === target);
-  const packResume = resume?.job === 'pack' && resume.pack === target ? resume : null;
+  const packResume = packJob && packJob.pack === target ? packJob : null;
   const packPending = packResume ? emojis.filter((e) => !packResume.ids.includes(e.id)) : emojis;
-  const sendResume = resume?.job === 'send' ? resume : null;
-  const overLimit = !!targetPack && targetPack.count + packPending.length > PACK_LIMIT;
+  const canSplit = !targetPack && emojis.length > CREATE_BATCH;
+  const splitting = canSplit && split;
+  const overLimit = targetPack ? targetPack.count + packPending.length > PACK_LIMIT : !splitting && emojis.length > PACK_LIMIT;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -110,8 +115,32 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
     downloadBlob(zipFiles(files), `${base}-emoji-${fileFormat}.zip`, 'application/zip');
   };
 
+  const packItems = (list: CompiledEmoji[]) =>
+    list.map((e) => ({ id: e.id, name: fileName(e, 'tgs'), data: fileData(e, 'tgs'), type: mime('tgs'), emoji: emojiFor[e.id] ?? e.emoji }));
+
+  /** Several packs of up to 50: each is created in one call, no waiting. */
+  const runSplit = async () => {
+    setBusy('pack');
+    setResult({ kind: 'none' });
+    setProgress({ done: 0, total: emojis.length });
+    const res = await createPacksSplit(
+      { title, items: packItems(emojis) },
+      setProgress,
+      (items, pack) => savePack({ name: pack.name, title: pack.title, url: pack.url, count: items.length }),
+    );
+    setBusy(null);
+    setProgress(null);
+    if (res.ok) {
+      setResult({ kind: 'packs', packs: res.data });
+      haptic();
+    } else {
+      setResult({ kind: 'error', job: 'pack', error: res.error, detail: res.detail });
+    }
+  };
+
   const runPack = async () => {
     if (busy || !packPending.length) return;
+    if (splitting) return runSplit();
     setBusy('pack');
     setResult({ kind: 'none' });
     const before = packResume?.ids ?? [];
@@ -122,34 +151,26 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
     let addedNow = 0;
     setProgress({ done: before.length, total: emojis.length });
     const res = await createPackAll(
-      {
-        title: targetPack?.title ?? title,
-        set: setName,
-        total: emojis.length,
-        fresh: !!packResume?.created,
-        items: packPending.map((e) => ({ id: e.id, name: fileName(e, 'tgs'), data: fileData(e, 'tgs'), type: mime('tgs'), emoji: emojiFor[e.id] ?? e.emoji })),
-      },
+      { title: targetPack?.title ?? title, set: setName, total: emojis.length, fresh: !!packResume?.created, items: packItems(packPending) },
       (p) => setProgress({ ...p, done: p.done + before.length, total: emojis.length }),
       (batch, pack) => {
         addedIds.push(...batch.map((b) => b.id));
         addedNow += batch.length;
-        // Remember the pack as soon as it exists, so a failure later can continue into it.
+        // Remember the pack and the progress as soon as they exist: closing the app loses nothing.
         savePack({ name: pack.name, title: pack.title, url: pack.url, count: startCount + addedNow });
+        if (addedIds.length < emojis.length) setStore('packJob', { pack: pack.name, ids: [...addedIds], created: createdHere });
       },
     );
     setBusy(null);
     setProgress(null);
     if (res.ok) {
       setTarget(res.data.name);
-      setResume(null);
+      setStore('packJob', null);
       setResult({ kind: 'pack', pack: res.data, added: !createdHere });
       haptic();
       return;
     }
-    if (res.data) {
-      setTarget(res.data.name);
-      setResume({ job: 'pack', pack: res.data.name, ids: addedIds, created: createdHere });
-    }
+    if (res.data) setTarget(res.data.name);
     setResult({ kind: 'error', job: 'pack', error: res.error, detail: res.detail, done: addedIds.length, total: emojis.length, pack: res.data });
   };
 
@@ -170,12 +191,12 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
     setBusy(null);
     setProgress(null);
     if (res.ok) {
-      if (key === 'send') setResume(null);
+      if (key === 'send') setSendResume(null);
       setResult({ kind: 'sent' });
       haptic();
       return;
     }
-    if (key === 'send' && sentIds.length) setResume({ job: 'send', ids: sentIds });
+    if (key === 'send' && sentIds.length) setSendResume({ ids: sentIds });
     setResult({ kind: 'error', job: 'send', error: res.error, detail: res.detail, done: key === 'send' ? sentIds.length : undefined, total: items.length });
   };
 
@@ -221,6 +242,13 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
                 <input value={title} maxLength={64} onChange={(e) => setTitle(e.target.value)} placeholder="Emoji Studio" />
               </label>
             )}
+            {canSplit && (
+              <div className="split-option">
+                <Toggle label={fill(t('packSplit'), { n: Math.ceil(emojis.length / CREATE_BATCH) })} checked={split} onChange={setSplit} />
+                <p className="hint">{splitting ? t('packSplitHint') : fill(t('packOneHint'), { n: CREATE_BATCH, rest: emojis.length - CREATE_BATCH })}</p>
+              </div>
+            )}
+            {packResume && <p className="note">{fill(t('packResumeHint'), { done: packResume.ids.filter((id) => emojis.some((e) => e.id === id)).length, total: emojis.length })}</p>}
             <p className="hint">{t('packEmojiHint')}</p>
           </div>
         )}
@@ -273,21 +301,38 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
           <>
             {overLimit && (
               <p className="note is-warn">
-                <WarningIcon width={16} height={16} /> {t('packFull')}
+                <WarningIcon width={16} height={16} /> {t(targetPack ? 'packFull' : 'packTooMany')}
               </p>
             )}
             <button type="button" className="primary-btn" disabled={!!busy || overLimit || tooBig || !packPending.length} onClick={runPack}>
               {busy === 'pack' ? <span className="btn-spinner" aria-hidden /> : <SparkleIcon />}
               {busy === 'pack'
                 ? `${t('packCreating')} ${progressLabel(progress)}`
-                : `${packResume ? t('packContinue') : targetPack ? t('packAdd') : t('packCreate')} (${packPending.length})`}
+                : `${packResume ? t('packContinue') : splitting ? fill(t('packCreateSplit'), { n: Math.ceil(emojis.length / CREATE_BATCH) }) : targetPack ? t('packAdd') : t('packCreate')} (${packPending.length})`}
             </button>
             {busy && progress && (
               <div className="job-progress" aria-hidden>
                 <span style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} className={progress.waiting ? 'is-waiting' : ''} />
               </div>
             )}
+            {busy === 'pack' && progress && !splitting && progress.total > CREATE_BATCH && (
+              <p className="hint">{progress.waiting ? t('packWaitHint') : t('packPaceHint')}</p>
+            )}
 
+            {result.kind === 'packs' && (
+              <div className="send-done is-list" role="status">
+                <p>
+                  <CheckIcon width={18} height={18} strokeWidth={3} /> {fill(t('packsCreated'), { n: result.packs.length })}
+                </p>
+                <div className="row-actions">
+                  {result.packs.map((p) => (
+                    <button key={p.name} type="button" className="pill-btn is-compact" onClick={() => openTelegramLink(p.url)}>
+                      {p.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {result.kind === 'pack' && (
               <div className="send-done" role="status">
                 <CheckIcon width={18} height={18} strokeWidth={3} />

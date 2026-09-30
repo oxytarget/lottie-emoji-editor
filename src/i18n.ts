@@ -284,6 +284,39 @@ const dict = {
   presetFull: { uk: 'Забагато пресетів — видаліть якийсь.', ru: 'Слишком много пресетов — удалите какой-нибудь.', en: 'Too many presets — delete one first.' },
   save: { uk: 'Зберегти', ru: 'Сохранить', en: 'Save' },
   cancel: { uk: 'Скасувати', ru: 'Отмена', en: 'Cancel' },
+  packSplit: { uk: 'Розбити на паки по 50 ({n} шт.)', ru: 'Разбить на паки по 50 ({n} шт.)', en: 'Split into packs of 50 ({n})' },
+  packSplitHint: {
+    uk: 'Кожен пак Telegram створює одним запитом — усе буде готово за хвилину, без очікування.',
+    ru: 'Каждый пак Telegram создаёт одним запросом — всё будет готово за минуту, без ожидания.',
+    en: 'Telegram creates each pack in one request — done in about a minute, no waiting.',
+  },
+  packOneHint: {
+    uk: 'Один пак: перші {n} емодзі Telegram додасть одразу, решту ({rest}) — по одному з паузами, щоб не отримати довге очікування.',
+    ru: 'Один пак: первые {n} эмодзи Telegram добавит сразу, остальные ({rest}) — по одному с паузами, чтобы не получить долгое ожидание.',
+    en: 'One pack: Telegram takes the first {n} emoji at once and the other {rest} one by one, with pauses to avoid long waits.',
+  },
+  packCreateSplit: { uk: 'Створити {n} паки', ru: 'Создать {n} пака', en: 'Create {n} packs' },
+  packsCreated: { uk: 'Готово! Створено паків: {n}. Посилання також у чаті з ботом.', ru: 'Готово! Создано паков: {n}. Ссылки также в чате с ботом.', en: 'Done! {n} packs created. The links are in your chat with the bot too.' },
+  packTooMany: {
+    uk: 'В одному паку може бути до 200 емодзі — увімкніть «Розбити на паки по 50».',
+    ru: 'В одном паке может быть до 200 эмодзи — включите «Разбить на паки по 50».',
+    en: 'A pack holds up to 200 emoji — turn on “Split into packs of 50”.',
+  },
+  packPaceHint: {
+    uk: 'Telegram додає емодзі по одному й не любить поспіху, тому я роблю паузи. Можна закрити застосунок — прогрес збережено, потім натисніть «Додати решту».',
+    ru: 'Telegram добавляет эмодзи по одному и не любит спешки, поэтому я делаю паузы. Можно закрыть приложение — прогресс сохранён, потом нажмите «Добавить остальные».',
+    en: 'Telegram adds emoji one by one and dislikes haste, so I pause between them. You can close the app — progress is saved; press “Add the rest” later.',
+  },
+  packWaitHint: {
+    uk: 'Це обмеження Telegram, його не обійти — після паузи продовжу сам і далі піду повільніше. Можна закрити застосунок і повернутися пізніше: прогрес збережено.',
+    ru: 'Это ограничение Telegram, его не обойти — после паузы продолжу сам и дальше пойду медленнее. Можно закрыть приложение и вернуться позже: прогресс сохранён.',
+    en: 'This is Telegram’s limit and cannot be skipped — I will continue after the pause, more slowly. You can close the app and come back later: progress is saved.',
+  },
+  packResumeHint: {
+    uk: 'Цей пак ще не дороблено: у ньому вже {done} з {total}. Натисніть «Додати решту».',
+    ru: 'Этот пак ещё не доделан: в нём уже {done} из {total}. Нажмите «Добавить остальные».',
+    en: 'This pack is not finished: {done} of {total} are in it. Press “Add the rest”.',
+  },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;

@@ -2290,6 +2290,31 @@ div.note p + p {
   margin: 0;
 }
 
+.split-option {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+
+.split-option .hint {
+  margin: 0;
+}
+
+.send-done.is-list {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.send-done.is-list p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
 /* "Edit all selected together" */
 .sync-bar {
   display: grid;

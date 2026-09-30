@@ -97,6 +97,8 @@ export interface EditorData {
   favColors: string[];
   favLogos: FavLogo[];
   userPresets: UserPreset[];
+  /** A big pack being filled in several steps: which emoji are already in it (so it can be finished later). */
+  packJob: { pack: string; ids: string[]; created: boolean } | null;
 }
 
 export interface EditorActions {
@@ -170,6 +172,7 @@ export const initialData = (): EditorData => ({
   favColors: [],
   favLogos: [],
   userPresets: [],
+  packJob: null,
 });
 
 /** Limits keep Favourites within the ~5 MB localStorage quota. */
@@ -342,11 +345,11 @@ export const useEditor = create<EditorData & EditorActions>()(
       // Packs live in Telegram and Favourites are the user's library, so a reset keeps them
       // (pack stickers stay loaded, with their edits reset).
       reset: () => {
-        const { lang, packs, myPacks, imports, favColors, favLogos, userPresets } = get();
+        const { lang, packs, myPacks, imports, favColors, favLogos, userPresets, packJob } = get();
         const stickers = imports
           .filter((t) => t.source)
           .map((t) => ({ ...t, colorMap: {}, transforms: {}, ...(t.defaults ?? { hidden: [], replace: null, overlay: false }) }));
-        set({ ...initialData(), lang, packs, myPacks, imports: stickers, favColors, favLogos, userPresets });
+        set({ ...initialData(), lang, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob });
       },
     }),
     {

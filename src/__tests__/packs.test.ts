@@ -241,4 +241,15 @@ describe('big packs (several requests)', () => {
     expect(msg.text).toContain('97');
     expect(msg.text).toContain('готовий');
   });
+
+  it('paces additions when the client asks to', async () => {
+    const calls = mockTelegram();
+    const form = await (await packRequest({ files: 3, set: ownSet })).formData();
+    form.set('pace', '60');
+    const started = Date.now();
+    const res = await handle(new Request('https://api.test/api/pack', { method: 'POST', body: form, headers: { origin: 'https://example.github.io' } }), env);
+    expect(await res.json()).toMatchObject({ ok: true, added: 3 });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(170);
+    expect(calls.filter((c) => c.method === 'addStickerToSet')).toHaveLength(3);
+  });
 });
