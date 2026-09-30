@@ -121,7 +121,7 @@ function StyleSettings({ fill }: { fill: boolean }) {
           {fill && (
             <div className="paint-line">
               <span className="label">{t('fill')}</span>
-              <GradientTools paint={s.textFill} onChange={(p) => s.set('textFill', p)} compact />
+              <GradientTools paint={s.textFill} onChange={(p) => s.set('textFill', p)} compact target="textFill" />
             </div>
           )}
           <Slider label={t('outlineWidth')} value={s.textOutlineWidth} min={0} max={20} step={1} onChange={(v) => s.set('textOutlineWidth', v)} onReset={() => s.set('textOutlineWidth', 8)} />

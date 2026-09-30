@@ -152,7 +152,7 @@ export function ColorsCard() {
               <PaintSwatches paint={s.colors[role]} label={t(key)} size="lg" onChange={(p) => s.setColor(role, p)} />
             </span>
             <span className="label">{t(key)}</span>
-            <GradientTools paint={s.colors[role]} onChange={(p) => s.setColor(role, p)} />
+            <GradientTools paint={s.colors[role]} onChange={(p) => s.setColor(role, p)} target={role} />
           </div>
         ))}
         </div>

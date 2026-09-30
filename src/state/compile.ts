@@ -2,6 +2,7 @@ import type { ArtStyle, VectorArt } from '../content/art';
 import { compose } from '../lottie/compose';
 import { checkTgs, tgsFromJson, toJson, type TgsCheck } from '../lottie/export';
 import { recolor, withOverlay } from '../lottie/imported';
+import { stripGradientClasses } from '../lottie/paint';
 import { applyPartEdits, stripPartClasses, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { BUILTIN_TEMPLATES } from '../templates/builtin';
@@ -38,7 +39,7 @@ export interface CompileOutput {
   /** Lottie JSON without the TGS marker. */
   json: string;
   check: TgsCheck;
-  /** Same animation with part classes, for the editor preview (only for `annotate`). */
+  /** Same animation with editor classes (parts of `annotate`, gradient handles), for the editor preview. */
   preview?: string;
 }
 
@@ -58,8 +59,8 @@ function buildTemplate(input: CompileInput, template: (typeof BUILTIN_TEMPLATES)
 
 function finish(id: string, anim: LottieAnimation, annotated = false): CompileOutput {
   const raw = toJson(anim);
-  const json = annotated ? stripPartClasses(raw) : raw;
-  return { id, json, check: checkTgs(anim, tgsFromJson(json).length), ...(annotated ? { preview: raw } : {}) };
+  const json = stripGradientClasses(annotated ? stripPartClasses(raw) : raw);
+  return { id, json, check: checkTgs(anim, tgsFromJson(json).length), ...(json !== raw ? { preview: raw } : {}) };
 }
 
 const withData = (imp: ImportInput): imp is ImportInput & { data: LottieAnimation } => !!imp.data;

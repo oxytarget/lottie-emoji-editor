@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { luminance, shade } from '../lottie/color';
-import { primaryColor, type Paint } from '../lottie/paint';
+import { primaryColor, rotateGradient, toggleRadial, type Paint } from '../lottie/paint';
+import type { GradTarget } from '../state/gradients';
+import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
-import { CloseIcon, DiceIcon, GradientIcon, RadialIcon, RotateIcon, SwapIcon } from './icons';
+import { CloseIcon, DiceIcon, GradHandlesIcon, GradientIcon, RadialIcon, RotateIcon, SwapIcon } from './icons';
 import { AnimIcon, useReplay, useSlidingIndicator, type IconMotion } from './motion';
 
 export function Slider(props: {
@@ -164,9 +166,14 @@ export function toGradient(p: Paint): Paint {
   return { type: 'linear', colors: [second, c], angle: 90 };
 }
 
-/** Gradient-specific buttons: rotate / swap / remove (or a "make gradient" button for solid paints). */
-export function GradientTools({ paint, onChange, compact }: { paint: Paint; onChange: (p: Paint) => void; compact?: boolean }) {
+/**
+ * Gradient-specific buttons: handles on the canvas / rotate / swap / radial / remove (or a "make gradient"
+ * button for solid paints — with a `target`, a new gradient opens its handles on the canvas right away).
+ */
+export function GradientTools({ paint, onChange, compact, target }: { paint: Paint; onChange: (p: Paint) => void; compact?: boolean; target?: GradTarget }) {
   const t = useT();
+  const gradEdit = useUi((u) => u.gradEdit);
+  const setGradEdit = useUi((u) => u.setGradEdit);
   if (paint.type === 'solid') {
     return (
       <MotionButton
@@ -174,21 +181,35 @@ export function GradientTools({ paint, onChange, compact }: { paint: Paint; onCh
         className={`pill-btn${compact ? ' is-compact' : ''}`}
         icon={<GradientIcon width={20} height={20} />}
         label={t('makeGradient')}
-        onClick={() => onChange(toGradient(paint))}
+        onClick={() => {
+          onChange(toGradient(paint));
+          if (target) setGradEdit(target);
+        }}
       >
         <span>{t('makeGradient')}</span>
       </MotionButton>
     );
   }
+  const onCanvas = !!target && gradEdit === target;
   return (
     <span className="gradient-tools">
+      {target && (
+        <MotionButton
+          motion="pop"
+          className={`icon-btn is-small${onCanvas ? ' is-accent' : ''}`}
+          icon={<GradHandlesIcon width={18} height={18} />}
+          label={t('gradOnCanvas')}
+          pressed={onCanvas}
+          onClick={() => setGradEdit(onCanvas ? null : target)}
+        />
+      )}
       {paint.type === 'linear' ? (
         <MotionButton
           motion="spin"
           className="icon-btn is-small"
           icon={<RotateIcon width={18} height={18} />}
           label={t('rotateGradient')}
-          onClick={() => onChange({ ...paint, angle: (paint.angle + 45) % 360 })}
+          onClick={() => onChange(rotateGradient(paint, 45))}
         />
       ) : (
         <MotionButton
@@ -205,7 +226,7 @@ export function GradientTools({ paint, onChange, compact }: { paint: Paint; onCh
         icon={<RadialIcon width={18} height={18} />}
         label={t('radialGradient')}
         pressed={paint.type === 'radial'}
-        onClick={() => onChange(paint.type === 'radial' ? { type: 'linear', colors: paint.colors, angle: 90 } : { type: 'radial', colors: paint.colors })}
+        onClick={() => onChange(toggleRadial(paint))}
       />
       <MotionButton
         motion="spin"

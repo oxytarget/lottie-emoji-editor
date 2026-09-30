@@ -45,14 +45,14 @@ export function compose(input: ComposeInput): LottieAnimation {
     op,
     layers,
     outlineWidth,
-    fill: (role, box, opacity = 100) => paintFill(colors[role], box, opacity),
-    stroke: (role, box, width = outlineWidth, opacity = 100) => paintStroke(colors[role], box, { width, opacity, cap: 2, join: 2 }),
+    fill: (role, box, opacity = 100) => paintFill(colors[role], box, opacity, false, role),
+    stroke: (role, box, width = outlineWidth, opacity = 100) => paintStroke(colors[role], box, { width, opacity, cap: 2, join: 2 }, role),
     painted(shapes, role, opts = {}) {
       const box = shapesBBox(shapes) ?? EMPTY_BOX;
       const width = opts.strokeWidth ?? outlineWidth;
       const out: ShapeItem[] = [...shapes];
-      if (!opts.noStroke && width > 0) out.push(paintStroke(colors.outline, box, { width, cap: 2, join: 2 }));
-      out.push(paintFill(colors[role], box, opts.opacity ?? 100));
+      if (!opts.noStroke && width > 0) out.push(paintStroke(colors.outline, box, { width, cap: 2, join: 2 }, 'outline'));
+      out.push(paintFill(colors[role], box, opts.opacity ?? 100, false, role));
       return out;
     },
     content(opts: ContentOptions) {

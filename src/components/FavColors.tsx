@@ -71,7 +71,10 @@ export function FavColorBar() {
       setDrag({ color, x: ev.clientX, y: ev.clientY });
       const top = Math.max(0, document.querySelector('.tabbar')?.getBoundingClientRect().bottom ?? 0);
       const bottom = Math.min(window.innerHeight, document.querySelector('.bottom-bar')?.getBoundingClientRect().top ?? window.innerHeight);
-      scroll = ev.clientY < top + 40 ? -10 : ev.clientY > bottom - 40 ? 10 : 0;
+      // Upwards only in the band under the tabs (or at the very top): over the preview — e.g. heading for a
+      // gradient dot — the page holds still, so the target does not slide away under the finger.
+      const up = ev.clientY < top + 40 && (ev.clientY >= top - 8 || ev.clientY < 40);
+      scroll = up ? -10 : ev.clientY > bottom - 40 ? 10 : 0;
       if (scroll && !frame) frame = requestAnimationFrame(autoScroll);
     };
     const end = (ev: PointerEvent) => {

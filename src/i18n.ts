@@ -358,6 +358,31 @@ const dict = {
   favClearAll: { uk: 'Очистити все', ru: 'Очистить всё', en: 'Clear all' },
   favClearColorsConfirm: { uk: 'Видалити всі обрані кольори ({n})?', ru: 'Удалить все избранные цвета ({n})?', en: 'Delete all favourite colours ({n})?' },
   favClearLogosConfirm: { uk: 'Видалити всі обрані лого ({n})?', ru: 'Удалить все избранные лого ({n})?', en: 'Delete all favourite logos ({n})?' },
+  gradOnCanvas: { uk: 'Градієнт на полотні', ru: 'Градиент на холсте', en: 'Gradient on the canvas' },
+  gradTextFill: { uk: 'Заливка тексту/лого', ru: 'Заливка текста/лого', en: 'Text/logo fill' },
+  gradTextOutline: { uk: 'Обводка тексту/лого', ru: 'Обводка текста/лого', en: 'Text/logo outline' },
+  gradBody: { uk: 'Заливка емодзі', ru: 'Заливка эмодзи', en: 'Emoji fill' },
+  gradOutline: { uk: 'Обводка емодзі', ru: 'Обводка эмодзи', en: 'Emoji outline' },
+  gradAccent: { uk: 'Акцент емодзі', ru: 'Акцент эмодзи', en: 'Emoji accent' },
+  gradHint: {
+    uk: 'Тягніть кружки — розтягнути й повернути, лінію — зсунути. Дотик до кружка — його колір.',
+    ru: 'Тяните кружки — растянуть и повернуть, линию — сдвинуть. Касание кружка — его цвет.',
+    en: 'Drag the dots to stretch and turn it, the line to move it. Tap a dot for its colour.',
+  },
+  gradMissing: {
+    uk: 'Цього градієнта немає на поточному емодзі — оберіть інше або змініть кольори тут.',
+    ru: 'Этого градиента нет на текущем эмодзи — выберите другое или измените цвета здесь.',
+    en: 'This gradient is not on the current emoji — pick another one or change the colours here.',
+  },
+  gradStrength: { uk: 'Сила', ru: 'Сила', en: 'Strength' },
+  gradLinear: { uk: 'Лінійний', ru: 'Линейный', en: 'Linear' },
+  gradStart: { uk: 'Початок градієнта', ru: 'Начало градиента', en: 'Gradient start' },
+  gradEnd: { uk: 'Кінець градієнта', ru: 'Конец градиента', en: 'Gradient end' },
+  gradCenter: { uk: 'Центр градієнта', ru: 'Центр градиента', en: 'Gradient centre' },
+  gradEdge: { uk: 'Край градієнта', ru: 'Край градиента', en: 'Gradient edge' },
+  gradLine: { uk: 'Лінія градієнта — тягніть, щоб зсунути', ru: 'Линия градиента — тяните, чтобы сдвинуть', en: 'Gradient line — drag to move it' },
+  gradReset: { uk: 'Скинути', ru: 'Сбросить', en: 'Reset' },
+  gradDone: { uk: 'Готово', ru: 'Готово', en: 'Done' },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;

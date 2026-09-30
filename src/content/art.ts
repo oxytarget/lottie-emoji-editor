@@ -115,9 +115,9 @@ export function artToShapes(items: readonly ArtItem[], bbox: BBox, style: ArtSty
     const styleItems: ShapeItem[] = [];
     const op = Math.round(it.opacity * 100);
     if (style.mode === 'paint') {
-      if (it.fill) styleItems.push(paintFill(style.fill, bbox, op, it.evenOdd));
+      if (it.fill) styleItems.push(paintFill(style.fill, bbox, op, it.evenOdd, 'textFill'));
       if (it.stroke) {
-        styleItems.push(paintStroke(style.fill, bbox, { width: it.stroke.width, cap: it.stroke.cap, join: it.stroke.join, miter: it.stroke.miter, opacity: op }));
+        styleItems.push(paintStroke(style.fill, bbox, { width: it.stroke.width, cap: it.stroke.cap, join: it.stroke.join, miter: it.stroke.miter, opacity: op }, 'textFill'));
       }
     } else {
       // Lottie draws earlier style items on top: SVG paints fill first, then stroke over it.
@@ -140,12 +140,12 @@ export function artToShapes(items: readonly ArtItem[], bbox: BBox, style: ArtSty
     const outlineGroups: ShapeItem[] = [];
     if (filled.length) {
       outlineGroups.push(
-        group([...filled.flatMap((it) => contourShapes(it.contours, digits)), paintStroke(style.outline, bbox, { width: ow, cap: 2, join: 2 })]),
+        group([...filled.flatMap((it) => contourShapes(it.contours, digits)), paintStroke(style.outline, bbox, { width: ow, cap: 2, join: 2 }, 'textOutline')]),
       );
     }
     for (const it of stroked) {
       outlineGroups.push(
-        group([...contourShapes(it.contours, digits), paintStroke(style.outline, bbox, { width: it.stroke!.width + ow, cap: 2, join: 2 })]),
+        group([...contourShapes(it.contours, digits), paintStroke(style.outline, bbox, { width: it.stroke!.width + ow, cap: 2, join: 2 }, 'textOutline')]),
       );
     }
     groups.push(...outlineGroups);

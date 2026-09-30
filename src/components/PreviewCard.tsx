@@ -2,9 +2,12 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { haptic } from '../lib/telegram';
 import { CONTENT_CLASS } from '../lottie/compose';
 import { flattenParts, listParts, NO_XF, PART_CLASS, type PartXf } from '../lottie/parts';
+import type { GradientPaint, Paint } from '../lottie/paint';
 import { compileOne, type CompileInput } from '../state/compile';
+import { paintOf, setPaintOf, withPaint, type GradTarget } from '../state/gradients';
 import { editImport, useUi } from '../state/ui';
 import { CanvasEditor, type ContentXf } from './CanvasEditor';
+import { GradientBar, GradientEditor } from './GradientEditor';
 import { MotionButton } from './controls';
 import { formatKb } from '../lottie/export';
 import { useEditor, type ImportedTemplate, type PreviewBg } from '../state/store';
@@ -209,6 +212,7 @@ const toContentXf = (p: PartXf): ContentXf => ({ scale: p.scale, offsetX: p.x, o
 const toPartXf = (c: ContentXf): PartXf => ({ x: c.offsetX, y: c.offsetY, scale: c.scale, rotation: c.rotation });
 /** Canvas selection: the user's text/logo or a part of an imported animation. */
 const CONTENT = '@content';
+const samePaint = (a: Paint, b: Paint) => JSON.stringify(a) === JSON.stringify(b);
 
 export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | undefined; pending: boolean; input: CompileInput }) {
   const t = useT();
@@ -234,6 +238,17 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   const pendingXf = useRef<ContentXf | null>(null);
   const lastPick = useRef<{ x: number; y: number } | null>(null);
 
+  // Gradient handles on the canvas (instead of the text/logo frame).
+  const gradTarget = useUi((u) => u.gradEdit);
+  const setGradEdit = useUi((u) => u.setGradEdit);
+  const storedGrad = useEditor((s) => (gradTarget ? paintOf(s, gradTarget) : null));
+  const [liveGrad, setLiveGrad] = useState<{ target: GradTarget; paint: GradientPaint } | null>(null);
+  const [gradFound, setGradFound] = useState(true);
+  const pendingGrad = useRef<GradientPaint | null>(null);
+  const gradBar = useRef<HTMLDivElement>(null);
+  const gradPaint = liveGrad && liveGrad.target === gradTarget ? liveGrad.paint : storedGrad?.type !== 'solid' ? storedGrad : null;
+  const gradEditing = !!gradTarget && !!gradPaint;
+
   const parts = useMemo(() => (imp ? flattenParts(listParts(imp.data)) : []), [imp?.data]);
   const grabbed = imp && grab?.id === imp.id ? parts.findIndex((p) => p.id === grab.part) : -1;
   const part = grabbed >= 0 ? parts[grabbed] : null;
@@ -247,16 +262,53 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
 
   // While dragging, rebuild only the visible animation (on the main thread, once per frame).
   const liveJson = useMemo(() => {
+    if (liveGrad && emoji && !liveXf) return compileOne(withPaint(input, liveGrad.target, liveGrad.paint), emoji.id);
     if (!liveXf || !emoji) return null;
     if (!part) return compileOne({ ...input, ...liveXf }, emoji.id);
     const imports = input.imports.map((i) => (i.id === emoji.id ? { ...i, transforms: { ...i.transforms, [part.id]: toPartXf(liveXf) } } : i));
     return compileOne({ ...input, imports }, emoji.id);
-  }, [liveXf, input, emoji, part]);
+  }, [liveXf, liveGrad, input, emoji, part]);
   // Keep the instant preview until the full recompile of the committed transform has landed.
   useEffect(() => {
     if (live && (live.key !== key || (!editing && !pending && sameXf(live.xf, stored)))) setLive(null);
   }, [live, key, editing, pending, stored]);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  useEffect(() => {
+    if (liveGrad && (liveGrad.target !== gradTarget || (!editing && !pending && storedGrad && samePaint(liveGrad.paint, storedGrad)))) setLiveGrad(null);
+  }, [liveGrad, gradTarget, editing, pending, storedGrad]);
+  // A paint that stopped being a gradient (preset, "remove gradient") closes the handles.
+  useEffect(() => {
+    if (gradTarget && storedGrad?.type === 'solid' && !liveGrad) setGradEdit(null);
+  }, [gradTarget, storedGrad, liveGrad, setGradEdit]);
+  // The animation holds still while the handles are shown (easier to grab), and plays on again after.
+  const resumeAfterGrad = useRef(false);
+  useEffect(() => {
+    if (gradEditing) {
+      resumeAfterGrad.current = resumeAfterGrad.current || playing;
+      setPlaying(false);
+    } else if (resumeAfterGrad.current) {
+      resumeAfterGrad.current = false;
+      setPlaying(true);
+    }
+  }, [gradEditing]);
+
+  const onGradLive = (next: GradientPaint) => {
+    if (!gradTarget) return;
+    pendingGrad.current = next;
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      if (pendingGrad.current) setLiveGrad({ target: gradTarget, paint: pendingGrad.current });
+    });
+  };
+  const onGradCommit = (next: GradientPaint) => {
+    if (!gradTarget) return;
+    pendingGrad.current = null;
+    setLiveGrad({ target: gradTarget, paint: next });
+    setPaintOf(gradTarget, next);
+  };
+  /** A tap on a dot: its colour (the painted favourite, or the palette). */
+  const onTapStop = (stop: 0 | 1) => gradBar.current?.querySelector<HTMLButtonElement>(`[data-stop="${stop}"] .swatch`)?.click();
 
   const onLive = (next: ContentXf) => {
     pendingXf.current = next;
@@ -309,38 +361,59 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
         <div key={emoji.id} className="preview-swap">
           <LottieView json={json} playing={playing && !editing} speed={speed} seek={seek} onFrame={bus.set} className="preview-anim" label={name} />
         </div>
-        <CanvasEditor
-          stage={stageRef}
-          target={part ? `${PART_CLASS}${grabbed}` : CONTENT_CLASS}
-          value={xf}
-          onLive={onLive}
-          onCommit={onCommit}
-          onActive={setEditing}
-          onPick={onPick}
-        />
+        {gradEditing && gradTarget && gradPaint ? (
+          <GradientEditor
+            key={gradTarget}
+            stage={stageRef}
+            target={gradTarget}
+            paint={gradPaint}
+            onLive={onGradLive}
+            onCommit={onGradCommit}
+            onActive={setEditing}
+            onTapStop={onTapStop}
+            onStopColor={(stop, hex) => onGradCommit({ ...gradPaint, colors: stop === 0 ? [hex, gradPaint.colors[1]] : [gradPaint.colors[0], hex] })}
+            onFound={setGradFound}
+          />
+        ) : (
+          <CanvasEditor
+            stage={stageRef}
+            target={part ? `${PART_CLASS}${grabbed}` : CONTENT_CLASS}
+            value={xf}
+            onLive={onLive}
+            onCommit={onCommit}
+            onActive={setEditing}
+            onPick={onPick}
+          />
+        )}
         {pending && <span className="preview-busy" aria-hidden />}
       </div>
-      <div className="canvas-tools">
-        {part ? (
-          <span className="grab-chip is-pop-in" role="status">
-            <GrabIcon width={16} height={16} />
-            <span>
-              {t('grabbed')}: <strong>{part.name}</strong>
-            </span>
-            <button type="button" className="grab-release" aria-label={t('grabRelease')} title={t('grabRelease')} onClick={() => setGrab(null)}>
-              <CloseIcon width={14} height={14} />
-            </button>
-          </span>
-        ) : (
-          <span className="hint">{emoji.imported ? t('canvasHintParts') : t('canvasHint')}</span>
-        )}
-        {moved && (
-          <MotionButton motion="spin-back" className="pill-btn is-compact is-pop-in" icon={<ResetIcon width={16} height={16} />} label={t('canvasReset')} onClick={() => onCommit(DEFAULT_XF)}>
-            {t('canvasReset')}
-          </MotionButton>
-        )}
-      </div>
-      <Player bus={bus} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} onSeek={(frame) => setSeek((v) => ({ frame, n: (v?.n ?? 0) + 1 }))} />
+      {gradEditing && gradTarget && gradPaint ? (
+        <GradientBar target={gradTarget} paint={gradPaint} found={gradFound} onChange={onGradCommit} onDone={() => setGradEdit(null)} barRef={gradBar} />
+      ) : (
+        <>
+          <div className="canvas-tools">
+            {part ? (
+              <span className="grab-chip is-pop-in" role="status">
+                <GrabIcon width={16} height={16} />
+                <span>
+                  {t('grabbed')}: <strong>{part.name}</strong>
+                </span>
+                <button type="button" className="grab-release" aria-label={t('grabRelease')} title={t('grabRelease')} onClick={() => setGrab(null)}>
+                  <CloseIcon width={14} height={14} />
+                </button>
+              </span>
+            ) : (
+              <span className="hint">{emoji.imported ? t('canvasHintParts') : t('canvasHint')}</span>
+            )}
+            {moved && (
+              <MotionButton motion="spin-back" className="pill-btn is-compact is-pop-in" icon={<ResetIcon width={16} height={16} />} label={t('canvasReset')} onClick={() => onCommit(DEFAULT_XF)}>
+                {t('canvasReset')}
+              </MotionButton>
+            )}
+          </div>
+          <Player bus={bus} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} onSeek={(frame) => setSeek((v) => ({ frame, n: (v?.n ?? 0) + 1 }))} />
+        </>
+      )}
       <div className="preview-bar">
         <div className="preview-meta">
           <strong>{name}</strong>

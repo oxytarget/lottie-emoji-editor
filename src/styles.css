@@ -3639,3 +3639,209 @@ div.note p + p {
 .part-controls {
   animation: item-in 0.25s var(--ease-out);
 }
+
+/* Gradient handles on the canvas */
+.grad-editor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: clip;
+  overflow-clip-margin: 16px;
+  animation: fade-in 0.2s ease;
+}
+
+.grad-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* A big radial ring stays inside the canvas. */
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.grad-line {
+  stroke: #fff;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 1.5px rgba(10, 8, 30, 0.75));
+}
+
+.grad-line-hit {
+  stroke: transparent;
+  stroke-width: 26;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: move;
+  touch-action: none;
+}
+
+.grad-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 1px rgba(10, 8, 30, 0.6));
+}
+
+.grad-handle {
+  position: absolute;
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: grab;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.grad-handle:active {
+  cursor: grabbing;
+}
+
+.grad-handle span {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1.5px rgba(10, 8, 30, 0.45), 0 3px 10px rgba(10, 8, 30, 0.35);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The end dot has a ring so the direction reads at a glance. */
+.grad-handle.is-end span {
+  box-shadow: 0 0 0 1.5px rgba(10, 8, 30, 0.45), 0 0 0 5px color-mix(in srgb, var(--accent) 55%, transparent), 0 3px 10px rgba(10, 8, 30, 0.35);
+}
+
+.grad-handle:hover span,
+.grad-handle:active span {
+  transform: scale(1.15);
+}
+
+.grad-handle:focus-visible {
+  outline: none;
+}
+
+.grad-handle:focus-visible span {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.grad-bar {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--sub);
+  border: 1px solid var(--accent-line);
+  animation: pop-in 0.25s var(--ease-out);
+}
+
+.grad-bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grad-bar-head .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.grad-bar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grad-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.grad-stops,
+.grad-bar-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grad-bar-tools {
+  margin-left: auto;
+}
+
+.grad-bar-row .segmented {
+  order: 3;
+  flex: 1 1 100%;
+}
+
+.grad-bar-row .segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+}
+
+.grad-strength {
+  grid-template-columns: auto minmax(0, 1fr) 3.2em;
+  align-items: center;
+  gap: 12px;
+}
+
+.grad-strength .slider-value {
+  text-align: right;
+}
+
+.grad-strength input[type='range']::-webkit-slider-runnable-track {
+  background: var(--grad-track);
+  box-shadow: inset 0 0 0 1px rgba(10, 8, 30, 0.12);
+}
+
+.grad-strength input[type='range']::-moz-range-track {
+  background: var(--grad-track);
+}
+
+.grad-bar .hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.grad-bar .hint.is-warn {
+  color: var(--warn);
+}
+
+@media (max-width: 600px) {
+  .grad-bar {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  /* One row on phones: the type switch shows icons (the names stay for screen readers). */
+  .grad-bar-row .segmented {
+    order: 0;
+    flex: 0 1 auto;
+  }
+  .grad-bar-row .segmented button {
+    padding: 0 10px;
+  }
+  .grad-bar-row .seg-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

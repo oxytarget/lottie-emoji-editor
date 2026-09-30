@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { GradTarget } from './gradients';
 import type { ImportOp } from './importOps';
 import { useEditor, type PackRef } from './store';
 
@@ -32,6 +33,9 @@ interface UiState {
   /** Favourite colour being painted onto swatches (tap a swatch to apply it). */
   paintColor: string | null;
   setPaintColor(color: string | null): void;
+  /** Gradient whose handles are shown on the canvas. */
+  gradEdit: GradTarget | null;
+  setGradEdit(target: GradTarget | null): void;
   /** Result of the last edit repeated on the selected animations (for a short confirmation). */
   syncReport: { applied: number; total: number; n: number } | null;
   setSyncReport(report: { applied: number; total: number }): void;
@@ -63,6 +67,8 @@ export const useUi = create<UiState>()((set, get) => ({
   setPackOpen: (name, open) => set({ openPacks: { ...get().openPacks, [name]: open } }),
   paintColor: null,
   setPaintColor: (paintColor) => set({ paintColor }),
+  gradEdit: null,
+  setGradEdit: (gradEdit) => set({ gradEdit }),
   syncReport: null,
   setSyncReport: (report) => set({ syncReport: { ...report, n: (get().syncReport?.n ?? 0) + 1 } }),
 }));

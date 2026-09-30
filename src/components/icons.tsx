@@ -40,6 +40,22 @@ export const GradientIcon = (p: P) => (
     <circle cx="15" cy="12" r="6" />
   </svg>
 );
+/** Gradient handles: two dots joined by a line (edit the gradient on the canvas). */
+export const GradHandlesIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M7.6 16.4l8.8-8.8" />
+    <circle cx="5.5" cy="18.5" r="3" />
+    <circle cx="18.5" cy="5.5" r="3" fill="currentColor" />
+  </svg>
+);
+export const LinearIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+    <path d="M8.5 4v16" />
+    <path d="M12 4v16" opacity="0.55" />
+    <path d="M15.5 4v16" opacity="0.25" />
+  </svg>
+);
 export const ChevronIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M6 9l6 6 6-6" />
