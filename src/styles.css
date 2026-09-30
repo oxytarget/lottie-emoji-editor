@@ -2013,6 +2013,56 @@ p {
   width: 100%;
 }
 
+/* "Edit all selected together" */
+.sync-bar {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--sub);
+  border: 1px solid var(--line);
+  transition: background-color 0.25s, border-color 0.25s, box-shadow 0.25s;
+}
+
+.sync-bar .toggle {
+  width: 100%;
+}
+
+.sync-bar.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sync-bar .hint {
+  margin: 0;
+}
+
+.sync-report {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ok) 14%, var(--card));
+  color: var(--ok);
+  font-size: 12px;
+  font-weight: 800;
+  animation: note-in 0.3s var(--ease-out, ease), fade-late 3.5s ease forwards;
+}
+
+.sync-report.is-partial {
+  background: color-mix(in srgb, var(--warn) 14%, var(--card));
+  color: var(--warn);
+}
+
+@keyframes fade-late {
+  0%, 80% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+
 /* Sticker packs as templates */
 .pack-form-wrap {
   padding: 16px;

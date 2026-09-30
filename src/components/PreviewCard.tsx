@@ -3,45 +3,79 @@ import { haptic } from '../lib/telegram';
 import { CONTENT_CLASS } from '../lottie/compose';
 import { flattenParts, listParts, NO_XF, PART_CLASS, type PartXf } from '../lottie/parts';
 import { compileOne, type CompileInput } from '../state/compile';
-import { useUi } from '../state/ui';
+import { editImport, useUi } from '../state/ui';
 import { CanvasEditor, type ContentXf } from './CanvasEditor';
 import { MotionButton } from './controls';
 import { formatKb } from '../lottie/export';
-import { useEditor, type PreviewBg } from '../state/store';
+import { useEditor, type ImportedTemplate, type PreviewBg } from '../state/store';
 import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
-import { CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, TrashIcon } from './icons';
+import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, TrashIcon } from './icons';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
 import { emojiName } from './TemplateGrid';
 
 const BGS: PreviewBg[] = ['light', 'dark', 'chess'];
 
+/** "Apply to all selected": edits of this animation are repeated on the other selected ones. */
+function SyncBar({ imp }: { imp: ImportedTemplate }) {
+  const t = useT();
+  const sync = useEditor((s) => s.syncImports);
+  const set = useEditor((s) => s.set);
+  const others = useEditor((s) => s.selected.reduce((n, id) => (id !== imp.id && s.imports.some((i) => i.id === id) ? n + 1 : n), 0));
+  const packLeft = useEditor((s) =>
+    imp.source ? s.imports.reduce((n, i) => (i.source?.pack === imp.source!.pack && !s.selected.includes(i.id) ? n + 1 : n), 0) : 0,
+  );
+  const report = useUi((u) => u.syncReport);
+
+  const selectPack = () => {
+    const { imports, selected } = useEditor.getState();
+    const ids = imports.filter((i) => i.source?.pack === imp.source?.pack).map((i) => i.id);
+    set('selected', [...selected, ...ids.filter((id) => !selected.includes(id))]);
+    haptic();
+  };
+
+  return (
+    <div className={`sync-bar${sync ? ' is-on' : ''}`}>
+      <Toggle label={t('syncTitle')} checked={sync} onChange={(v) => set('syncImports', v)} />
+      <p className="hint">
+        {sync && others > 0 ? `${t('syncHint')} ${t('syncCount')}: ${others}.` : sync ? t('syncNone') : t('syncOffHint')}
+      </p>
+      {packLeft > 0 && (
+        <button type="button" className="pill-btn is-compact" onClick={selectPack}>
+          <CheckIcon width={16} height={16} /> {t('syncSelectPack')} (+{packLeft})
+        </button>
+      )}
+      {sync && report && (
+        <p key={report.n} className={`sync-report${report.applied < report.total ? ' is-partial' : ''}`} role="status">
+          <CheckIcon width={14} height={14} strokeWidth={3} /> {t('syncApplied')}: {report.applied} / {report.total}
+          {report.applied < report.total ? ` · ${t('syncMissing')}` : ''}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ImportedPanel({ id }: { id: string }) {
   const t = useT();
   const imp = useEditor((s) => s.imports.find((i) => i.id === id));
-  const update = useEditor((s) => s.updateImport);
   const remove = useEditor((s) => s.removeImport);
   if (!imp) return null;
   return (
     <div className="imported-panel">
+      <SyncBar imp={imp} />
       <PartsPanel key={imp.id} imp={imp} />
       <h3 className="section-title">{t('importedPalette')}</h3>
       <div className="palette-map">
         {imp.palette.map((from) => (
-          <ColorSwatch
-            key={from}
-            color={imp.colorMap[from] ?? from}
-            label={from}
-            onChange={(to) => update(id, { colorMap: { ...imp.colorMap, [from]: to } })}
-          />
+          <ColorSwatch key={from} color={imp.colorMap[from] ?? from} label={from} onChange={(to) => editImport(id, { kind: 'color', from, to })} />
         ))}
       </div>
-      <Toggle label={t('importedOverlay')} checked={imp.overlay} onChange={(v) => update(id, { overlay: v })} />
+      <Toggle label={t('importedOverlay')} checked={imp.overlay} onChange={(v) => editImport(id, { kind: 'overlay', value: v })} />
       <div className="row-actions">
-        <button type="button" className="pill-btn is-compact" onClick={() => update(id, { colorMap: {} })}>
+        <button type="button" className="pill-btn is-compact" onClick={() => editImport(id, { kind: 'colorsReset' })}>
           <ResetIcon width={18} height={18} /> {t('importedReset')}
         </button>
         {!imp.source && (
@@ -67,7 +101,6 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   const bg = useEditor((s) => s.previewBg);
   const set = useEditor((s) => s.set);
   const setTransform = useEditor((s) => s.setTransform);
-  const updateImport = useEditor((s) => s.updateImport);
   const scale = useEditor((s) => s.scale);
   const offsetX = useEditor((s) => s.offsetX);
   const offsetY = useEditor((s) => s.offsetY);
@@ -117,7 +150,7 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   };
   const onCommit = (next: ContentXf) => {
     setLive({ key, xf: next });
-    if (part && imp) updateImport(imp.id, { transforms: { ...imp.transforms, [part.id]: toPartXf(next) } });
+    if (part && imp) editImport(imp.id, { kind: 'transform', part: part.id, xf: toPartXf(next) });
     else setTransform(next);
   };
 

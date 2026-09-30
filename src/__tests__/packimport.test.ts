@@ -133,3 +133,105 @@ describe('normalizeForTgs', () => {
     expect(check.problems).toEqual([]);
   });
 });
+
+describe('editing all selected stickers together', () => {
+  const setup = async (sync: boolean) => {
+    const { useEditor } = await import('../state/store');
+    const { extractPalette } = await import('../lottie/imported');
+    const pack = generatedPack();
+    const picks = analyzePack(pack);
+    const imports = pack.map((data, i) => ({
+      id: `pack:p:${i}`,
+      name: `${i}`,
+      data,
+      palette: extractPalette(data),
+      colorMap: {},
+      overlay: false,
+      hidden: picks[i].hidden,
+      replace: picks[i].replace,
+      transforms: {},
+      source: { pack: 'p', uid: `u${i}`, emoji: '⭐' },
+      defaults: { hidden: picks[i].hidden, replace: picks[i].replace, overlay: false },
+    }));
+    useEditor.setState({ imports, selected: imports.map((t) => t.id), active: imports[0].id, syncImports: sync, packEdits: {} });
+    return { useEditor, imports };
+  };
+
+  it('repeats colour, logo, hide, move and reset edits on every selected sticker', async () => {
+    const { useEditor, imports } = await setup(true);
+    const edit = useEditor.getState().editImport;
+    const id = imports[0].id;
+    const logo = imports[0].replace!;
+
+    // Colours: the body colour is shared by the pack.
+    const body = imports[0].palette.find((c) => c === '#7c3aed')!;
+    expect(edit(id, { kind: 'color', from: body, to: '#ff0000' })).toEqual({ applied: 4, total: 4 });
+    for (const t of useEditor.getState().imports) expect(t.colorMap['#7c3aed']).toBe('#ff0000');
+
+    // Moving the logo moves every sticker's own logo.
+    edit(id, { kind: 'transform', part: logo, xf: { x: 10, y: 0, scale: 1.2, rotation: 0 } });
+    for (const t of useEditor.getState().imports) expect(t.transforms[t.replace!]).toEqual({ x: 10, y: 0, scale: 1.2, rotation: 0 });
+
+    // Hiding the logo instead of replacing it.
+    expect(edit(id, { kind: 'hide', part: logo, hidden: true }).applied).toBe(4);
+    for (const t of useEditor.getState().imports) {
+      expect(t.replace).toBeNull();
+      expect(t.hidden).toHaveLength(1);
+    }
+
+    // Replace again by picking the same (same-shaped) part.
+    edit(id, { kind: 'replace', part: logo });
+    useEditor.getState().imports.forEach((t, i) => {
+      expect(t.replace).toBe(imports[i].replace);
+      expect(t.hidden).toEqual([]);
+    });
+
+    edit(id, { kind: 'overlay', value: true });
+    edit(id, { kind: 'partsReset' });
+    edit(id, { kind: 'colorsReset' });
+    for (const t of useEditor.getState().imports) {
+      expect(t.overlay).toBe(true);
+      expect(t.transforms).toEqual({});
+      expect(t.colorMap).toEqual({});
+    }
+    // Pack edits are remembered per sticker.
+    expect(Object.keys(useEditor.getState().packEdits)).toHaveLength(5);
+  });
+
+  it('changes only the open sticker when the option is off, and skips stickers without such a part', async () => {
+    const { useEditor, imports } = await setup(false);
+    const edit = useEditor.getState().editImport;
+    expect(edit(imports[0].id, { kind: 'overlay', value: true })).toEqual({ applied: 0, total: 0 });
+    expect(useEditor.getState().imports.map((t) => t.overlay)).toEqual([true, false, false, false, false]);
+
+    useEditor.setState({ syncImports: true, active: imports[1].id });
+    // Same-built files: the "body" layer is the same part in every sticker.
+    const bodyPart = flattenParts(listParts(imports[1].data)).find((p) => p.name === 'body')!.id;
+    expect(edit(imports[1].id, { kind: 'hide', part: bodyPart, hidden: true })).toEqual({ applied: 4, total: 4 });
+    // Only the heart has little hearts: the others have nothing to hide.
+    const heart = flattenParts(listParts(imports[1].data)).find((p) => p.name === 'mini-heart')!.id;
+    const result = edit(imports[1].id, { kind: 'hide', part: heart, hidden: true });
+    expect(result.total).toBe(4);
+    expect(result.applied).toBe(0);
+  });
+
+  it('matches parts by shape or by a meaningful name, never by generic names', async () => {
+    const { matchPart } = await import('../lottie/packs');
+    const a = anim([layer(1, 'Layer 1', [blob(50, 20)]), layer(2, 'eyes', [blob(10, 20)]), layer(3, 'Art', [logoGroup('Logo', 1)])]);
+    const b = anim([layer(1, 'Layer 1', [blob(90, 30)]), layer(2, 'Other', [blob(70, 70)]), layer(3, 'eyes', [blob(30, 30)]), layer(4, 'Brand', [logoGroup('Brand', 2, 40, 40)])]);
+    expect(matchPart(a, 'l2', b)).toBe('l3'); // same logo outline, other size and place
+    expect(matchPart(a, 'l1', b)).toBe('l2'); // "eyes"
+    expect(matchPart(a, 'l0', b)).toBe('l0'); // same place, same name
+    const c = anim([layer(1, 'Other', [blob(90, 30)]), layer(2, 'Layer 1', [blob(5, 90)])]);
+    expect(matchPart(a, 'l0', c)).toBeNull(); // "Layer 1" elsewhere is not the same part
+    // Simple shapes match only at about the same place and size.
+    const dot = (p: number[]) => anim([layer(1, 'A', [blob(40, 40)], p)]);
+    expect(matchPart(dot([256, 256, 0]), 'l0', anim([layer(1, 'B', [blob(20, 20)], [60, 60, 0]), layer(2, 'C', [blob(44, 44)], [260, 250, 0])]))).toBe('l1');
+    expect(matchPart(dot([256, 256, 0]), 'l0', anim([layer(1, 'B', [blob(40, 40)], [60, 60, 0])]))).toBeNull();
+  });
+
+  it('matches nearly equal colours', async () => {
+    const { matchColors } = await import('../lottie/packs');
+    expect(matchColors(['#ffd400', '#ffd502', '#000000'], '#ffd401')).toEqual(['#ffd400', '#ffd502']);
+  });
+});

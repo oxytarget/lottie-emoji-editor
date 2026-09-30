@@ -1,3 +1,4 @@
+import { hexToRgba } from './color';
 import { flattenParts, listParts, partBounds, partFrame, partGeometry, sameGeometry, type Part, type PartGeometry } from './parts';
 import type { BBox, LottieAnimation } from './types';
 
@@ -84,5 +85,84 @@ export function analyzePack(anims: readonly LottieAnimation[]): PackPick[] {
 
     const guess = flattenParts(listParts(anim)).find((p) => p.detected && p.replaceable);
     return { replace: guess?.id ?? null, hidden: [], shared: false };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Matching parts and colours between stickers (for editing many stickers at once)
+// ---------------------------------------------------------------------------
+
+const partsCache = new WeakMap<LottieAnimation, Part[]>();
+const geometryCache = new WeakMap<LottieAnimation, Map<string, PartGeometry | null>>();
+
+function partsOf(anim: LottieAnimation): Part[] {
+  let parts = partsCache.get(anim);
+  if (!parts) {
+    parts = flattenParts(listParts(anim));
+    partsCache.set(anim, parts);
+  }
+  return parts;
+}
+
+function geometryOf(anim: LottieAnimation, id: string): PartGeometry | null {
+  let byId = geometryCache.get(anim);
+  if (!byId) {
+    byId = new Map();
+    geometryCache.set(anim, byId);
+  }
+  if (!byId.has(id)) byId.set(id, partGeometry(anim, id));
+  return byId.get(id) ?? null;
+}
+
+/**
+ * The part of `to` that corresponds to `id` in `from`: the same outlines (at any position and size), or —
+ * for identically built files — the same place with the same name. Null when there is no such part.
+ */
+export function matchPart(from: LottieAnimation, id: string, to: LottieAnimation): string | null {
+  const source = partsOf(from).find((p) => p.id === id);
+  if (!source) return null;
+  const candidates = partsOf(to);
+  const geo = geometryOf(from, id);
+  if (geo) {
+    let hits = candidates.filter((p) => {
+      const g = geometryOf(to, p.id);
+      return !!g && sameGeometry(geo, g);
+    });
+    // A plain circle or square is everywhere: for simple outlines also require about the same place and size.
+    if (geo.contours < 2 && geo.segments < 10) {
+      const a = boundsOf(from, id);
+      hits = hits.filter((p) => {
+        const b = boundsOf(to, p.id);
+        return !!a && !!b && closeBoxes(a, b, from.w, to.w);
+      });
+    }
+    if (hits.length) return (hits.find((p) => p.id === id) ?? hits[0]).id;
+  }
+  const same = candidates.find((p) => p.id === id);
+  if (same && same.kind === source.kind && same.name === source.name) return same.id;
+  // A meaningful name used once ("body", "eyes"), wherever it sits.
+  if (GENERIC_NAME.test(source.name)) return null;
+  const named = candidates.filter((p) => p.name === source.name && p.kind === source.kind);
+  return named.length === 1 ? named[0].id : null;
+}
+
+/** Names editors generate on their own — they say nothing about what a part is. */
+const GENERIC_NAME = /^(?:(?:shape |text |null |solid |pre-?comp |image )?layer|group|shape|слой|шар|група|группа|фигура|фігура|null|comp|precomp)[\s_-]*\d*$/i;
+
+const boundsOf = (anim: LottieAnimation, id: string) => partBounds(anim, id, partFrame(anim, id) + anim.ip);
+
+function closeBoxes(a: BBox, b: BBox, wa: number, wb: number): boolean {
+  const n = (box: BBox, w: number) => ({ x: (box.x + box.w / 2) / w, y: (box.y + box.h / 2) / w, s: Math.max(box.w, box.h) / w });
+  const p = n(a, wa);
+  const q = n(b, wb);
+  return Math.hypot(p.x - q.x, p.y - q.y) < 0.12 && Math.abs(p.s - q.s) < Math.max(p.s, q.s) * 0.3;
+}
+
+/** Colours of `palette` that are (nearly) `color` — exports round colours slightly differently. */
+export function matchColors(palette: readonly string[], color: string, tolerance = 6 / 255): string[] {
+  const [r, g, b] = hexToRgba(color);
+  return palette.filter((c) => {
+    const [r2, g2, b2] = hexToRgba(c);
+    return Math.max(Math.abs(r - r2), Math.abs(g - g2), Math.abs(b - b2)) <= tolerance;
   });
 }

@@ -211,6 +211,26 @@ const dict = {
   packUnselectAll: { uk: 'Зняти всі', ru: 'Снять все', en: 'Unselect all' },
   packRemove: { uk: 'Прибрати пак', ru: 'Убрать пак', en: 'Remove pack' },
   packLogoFound: { uk: 'лого знайдено', ru: 'лого найдено', en: 'logo found' },
+  syncTitle: { uk: 'Змінювати всі обрані разом', ru: 'Изменять все выбранные вместе', en: 'Edit all selected together' },
+  syncHint: {
+    uk: 'Кольори, заміна лого, приховані й переміщені частини та текст поверх переносяться на всі обрані імпортовані анімації — такі самі частини знаходяться за формою.',
+    ru: 'Цвета, замена лого, скрытые и перемещённые части и текст поверх переносятся на все выбранные импортированные анимации — такие же части находятся по форме.',
+    en: 'Colours, logo replacement, hidden and moved parts and the text on top are copied to every selected imported animation — matching parts are found by shape.',
+  },
+  syncCount: { uk: 'Разом із цією змінюватимуться', ru: 'Вместе с этой будут меняться', en: 'Also edited with this one' },
+  syncNone: {
+    uk: 'Оберіть у сітці інші імпортовані стікери (або весь пак) — зміни цього застосуються й до них.',
+    ru: 'Выберите в сетке другие импортированные стикеры (или весь пак) — изменения этого применятся и к ним.',
+    en: 'Select other imported stickers in the grid (or the whole pack) — edits of this one will apply to them too.',
+  },
+  syncOffHint: {
+    uk: 'Увімкніть, щоб одним рухом замінити лого чи кольори в усіх обраних стікерах паку.',
+    ru: 'Включите, чтобы одним движением заменить лого или цвета во всех выбранных стикерах пака.',
+    en: 'Turn on to change the logo or colours of every selected sticker of the pack at once.',
+  },
+  syncSelectPack: { uk: 'Обрати весь пак', ru: 'Выбрать весь пак', en: 'Select the whole pack' },
+  syncApplied: { uk: 'Застосовано', ru: 'Применено', en: 'Applied' },
+  syncMissing: { uk: 'в інших немає такої частини чи кольору', ru: 'в остальных нет такой части или цвета', en: 'the others have no such part or colour' },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;

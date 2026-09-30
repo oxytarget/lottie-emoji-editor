@@ -4,7 +4,7 @@ import { recolor } from '../lottie/imported';
 import { flattenParts, isIdentityXf, isolatePart, listParts, NO_XF, partFrame, type Part, type PartKind, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
-import { useUi } from '../state/ui';
+import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
 import { ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, ReplaceIcon, ResetIcon, WarningIcon } from './icons';
 import { MotionButton, Slider } from './controls';
@@ -44,13 +44,9 @@ function PartThumb({ anim, id }: { anim: LottieAnimation; id: string }) {
 /** Sliders for a grabbed part — the same move/size/rotation as dragging it on the canvas. */
 function PartControls({ imp, part }: { imp: ImportedTemplate; part: Part }) {
   const t = useT();
-  const update = useEditor((s) => s.updateImport);
   const xf = imp.transforms[part.id] ?? NO_XF;
-  const set = (patch: Partial<PartXf>) => update(imp.id, { transforms: { ...imp.transforms, [part.id]: { ...xf, ...patch } } });
-  const reset = () => {
-    const { [part.id]: _gone, ...rest } = imp.transforms;
-    update(imp.id, { transforms: rest });
-  };
+  const set = (patch: Partial<PartXf>) => editImport(imp.id, { kind: 'transform', part: part.id, xf: { ...xf, ...patch } });
+  const reset = () => editImport(imp.id, { kind: 'transform', part: part.id, xf: null });
   return (
     <li className="part-controls" style={{ '--depth': 0 } as React.CSSProperties}>
       <div className="slider-grid">
@@ -172,7 +168,6 @@ function PartRow(props: RowProps) {
 /** Lets the user hide parts of an imported animation or swap its text/logo for their own. */
 export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
   const t = useT();
-  const update = useEditor((s) => s.updateImport);
   const mode = useEditor((s) => s.mode);
   const text = useEditor((s) => s.text);
   const logo = useEditor((s) => s.logo);
@@ -195,15 +190,8 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
       return next;
     });
 
-  const toggleHidden = (id: string) => {
-    const hidden = imp.hidden.includes(id) ? imp.hidden.filter((h) => h !== id) : [...imp.hidden, id];
-    update(imp.id, { hidden, replace: imp.replace === id ? null : imp.replace });
-  };
-  const toggleReplace = (id: string) => {
-    if (imp.replace === id) return update(imp.id, { replace: null });
-    // The replaced part and everything around it must stay visible.
-    update(imp.id, { replace: id, hidden: imp.hidden.filter((h) => h !== id && !isAncestor(h, id)) });
-  };
+  const toggleHidden = (id: string) => editImport(imp.id, { kind: 'hide', part: id, hidden: !imp.hidden.includes(id) });
+  const toggleReplace = (id: string) => editImport(imp.id, { kind: 'replace', part: imp.replace === id ? null : id });
 
   const grab = useUi((u) => u.grab);
   const setGrab = useUi((u) => u.setGrab);
@@ -232,7 +220,7 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
     imp.replace === imp.defaults.replace &&
     imp.hidden.length === imp.defaults.hidden.length &&
     imp.hidden.every((h) => imp.defaults!.hidden.includes(h));
-  const resetParts = () => update(imp.id, { hidden: imp.defaults?.hidden ?? [], replace: imp.defaults?.replace ?? null, transforms: {} });
+  const resetParts = () => editImport(imp.id, { kind: 'partsReset' });
 
   const noContent = !!imp.replace && (mode === 'logo' ? !logo : !text.trim());
 

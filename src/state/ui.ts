@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { PackRef } from './store';
+import type { ImportOp } from './importOps';
+import { useEditor, type PackRef } from './store';
 
 export type PackStatus =
   | { state: 'loading'; done: number; total: number }
@@ -23,6 +24,9 @@ interface UiState {
   setBotPacks(packs: PackRef[]): void;
   openPacks: Record<string, boolean>;
   setPackOpen(name: string, open: boolean): void;
+  /** Result of the last edit repeated on the selected animations (for a short confirmation). */
+  syncReport: { applied: number; total: number; n: number } | null;
+  setSyncReport(report: { applied: number; total: number }): void;
 }
 
 export const useUi = create<UiState>()((set, get) => ({
@@ -47,4 +51,12 @@ export const useUi = create<UiState>()((set, get) => ({
   setBotPacks: (botPacks) => set({ botPacks }),
   openPacks: {},
   setPackOpen: (name, open) => set({ openPacks: { ...get().openPacks, [name]: open } }),
+  syncReport: null,
+  setSyncReport: (report) => set({ syncReport: { ...report, n: (get().syncReport?.n ?? 0) + 1 } }),
 }));
+
+/** Edits an imported animation (and the selected ones, when "apply to all selected" is on) and reports it. */
+export function editImport(id: string, op: ImportOp): void {
+  const result = useEditor.getState().editImport(id, op);
+  if (result.total) useUi.getState().setSyncReport(result);
+}

@@ -6,6 +6,7 @@ import type { Paint } from '../lottie/paint';
 import type { PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import type { ColorRole, EmojiColors, Lang } from '../templates/types';
+import { applyImportOp, applyImportOpTo, type ImportOp } from './importOps';
 import { PRESETS, randomEmojiColors, randomTextColors, type ColorPreset } from './presets';
 
 export interface ImportedTemplate {
@@ -75,6 +76,8 @@ export interface EditorData {
   /** Sticker packs the user added as templates. */
   myPacks: PackRef[];
   packEdits: Record<string, PackEdit>;
+  /** Edits of an imported animation are repeated on every other selected one. */
+  syncImports: boolean;
 }
 
 export interface EditorActions {
@@ -88,6 +91,11 @@ export interface EditorActions {
   toggleTemplate(id: string): void;
   addImport(t: ImportedTemplate): void;
   updateImport(id: string, patch: Partial<ImportedTemplate>): void;
+  /**
+   * Edits an imported animation — and, with `syncImports`, every other selected one (parts are matched by shape).
+   * Returns how many of the other selected animations were changed.
+   */
+  editImport(id: string, op: ImportOp): { applied: number; total: number };
   removeImport(id: string): void;
   /** Adds (or refreshes) the stickers of a pack; `personal` also remembers the pack in "My packs". */
   addPackTemplates(pack: PackRef, templates: ImportedTemplate[], personal: boolean): void;
@@ -128,6 +136,7 @@ export const initialData = (): EditorData => ({
   packs: [],
   myPacks: [],
   packEdits: {},
+  syncImports: false,
 });
 
 const isSessionOnly = (id: string) => id.startsWith('import-') || id.startsWith('pack:');
@@ -163,6 +172,33 @@ export const useEditor = create<EditorData & EditorActions>()(
         if (!updated?.source) return set({ imports });
         const { colorMap, overlay, hidden, replace, transforms } = updated;
         set({ imports, packEdits: { ...get().packEdits, [updated.source.uid]: { colorMap, overlay, hidden, replace, transforms } } });
+      },
+      editImport: (id, op) => {
+        const { imports, selected, syncImports, packEdits } = get();
+        const source = imports.find((t) => t.id === id);
+        if (!source) return { applied: 0, total: 0 };
+        const targets = new Set(syncImports ? selected.filter((s) => s !== id) : []);
+        let applied = 0;
+        let total = 0;
+        const edits = { ...packEdits };
+        const next = imports.map((t) => {
+          let patch;
+          if (t.id === id) patch = applyImportOp(t, op);
+          else if (targets.has(t.id)) {
+            total++;
+            patch = applyImportOpTo(source, t, op);
+            if (patch) applied++;
+          }
+          if (!patch) return t;
+          const updated = { ...t, ...patch };
+          if (updated.source) {
+            const { colorMap, overlay, hidden, replace, transforms } = updated;
+            edits[updated.source.uid] = { colorMap, overlay, hidden, replace, transforms };
+          }
+          return updated;
+        });
+        set({ imports: next, packEdits: edits });
+        return { applied, total };
       },
       addPackTemplates: (pack, templates, personal) => {
         const { imports, myPacks } = get();
