@@ -1,0 +1,11 @@
+# Emoji Studio bot backend. Deployed by .github/workflows/bot-backend.yml.
+name = "emoji-studio-bot"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+APP_URL = "https://oxytarget.github.io/lottie-emoji-editor/"
+ALLOWED_ORIGINS = "https://oxytarget.github.io"
+
+# TELEGRAM_BOT_TOKEN is a secret: `wrangler secret put TELEGRAM_BOT_TOKEN` (the workflow does this).

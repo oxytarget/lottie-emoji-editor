@@ -1,8 +1,11 @@
 /** Optional Telegram Mini App integration — everything is a no-op in a regular browser. */
 
 interface TelegramWebApp {
+  initData?: string;
   ready(): void;
   expand(): void;
+  close?(): void;
+  requestWriteAccess?(callback?: (granted: boolean) => void): void;
   setHeaderColor?(color: string): void;
   setBackgroundColor?(color: string): void;
   openLink?(url: string): void;
@@ -49,6 +52,28 @@ export function haptic(): void {
   } catch {
     /* not supported */
   }
+}
+
+/** Signed launch data, sent to the bot backend to prove who the user is. */
+export function initData(): string {
+  return webApp()?.initData ?? '';
+}
+
+/** Asks the user to let the bot message them (needed if they never pressed Start). */
+export function requestWriteAccess(): Promise<boolean> {
+  const app = webApp();
+  if (!app?.requestWriteAccess) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    try {
+      app.requestWriteAccess!((granted) => resolve(granted));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+export function closeApp(): void {
+  webApp()?.close?.();
 }
 
 export function openExternal(url: string): void {

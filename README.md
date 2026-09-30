@@ -54,16 +54,31 @@ npm run preview    # перегляд збірки
 
 ### Бот
 
-Workflow `.github/workflows/telegram-bot.yml` налаштовує бота одним запуском: кнопка меню «Emoji Studio» відкриває редактор,
-команда `/start`, опис і короткий опис (uk / ru / en). Сервер для цього не потрібен.
+**Налаштування бота** (`.github/workflows/telegram-bot.yml`, запуск вручну): кнопка меню «Emoji Studio» відкриває редактор,
+команда `/start`, опис і короткий опис (uk / ru / en). Потрібен секрет `TELEGRAM_BOT_TOKEN`
+(*Settings → Secrets and variables → Actions*). Токен ніколи не комітьте в репозиторій.
 
-1. Додайте токен бота як секрет репозиторію: *Settings → Secrets and variables → Actions → New repository secret*,
-   назва `TELEGRAM_BOT_TOKEN`. Токен ніколи не комітьте в репозиторій.
-2. *Actions → Set up Telegram bot → Run workflow*.
-3. За бажанням: @BotFather → `/mybots` → бот → *Bot Settings → Configure Mini App* → увімкніть із тим самим URL —
-   у профілі бота з'явиться кнопка «Open App».
+**Бекенд бота** (`worker/`, Cloudflare Workers, безкоштовний тариф):
+- `POST /api/send` — у Telegram кнопка «Надіслати в чат» у вікні експорту відправляє файли сюди; воркер перевіряє
+  підпис `initData` і бот надсилає `.tgs` файлами користувачу в чат (альбомами по 10). Якщо користувач ще не натискав Start,
+  Mini App попросить дозвіл на повідомлення й повторить спробу;
+- `POST /telegram` — вебхук: на `/start` бот відповідає привітанням і кнопкою «Відкрити редактор».
 
-Локально: `TELEGRAM_BOT_TOKEN=... APP_URL=https://... node scripts/setup-telegram-bot.mjs`.
+Розгортання — workflow `.github/workflows/bot-backend.yml` (вручну або автоматично при змінах у `worker/`):
+деплой воркера, передача йому токена, реєстрація вебхука й перезбірка сайту з адресою бекенда.
+Секрети репозиторію:
+
+| Секрет | Де взяти |
+| --- | --- |
+| `TELEGRAM_BOT_TOKEN` | @BotFather |
+| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com → *My Profile → API Tokens → Create Token* → шаблон **Edit Cloudflare Workers** |
+| `CLOUDFLARE_ACCOUNT_ID` | dash.cloudflare.com → *Workers & Pages* → Account ID праворуч |
+
+Перед першим деплоєм відкрийте *Workers & Pages* у панелі Cloudflare, щоб створився ваш піддомен `*.workers.dev`.
+Адресу бекенда збірка сайту визначає сама; за потреби її можна задати змінною репозиторію `BOT_API_URL`.
+
+Локально: `cd worker && npm install`, створіть `worker/.dev.vars` з `TELEGRAM_BOT_TOKEN=...` і `ALLOWED_ORIGINS=http://localhost:5173`,
+запустіть `npx wrangler dev`, а сайт — `VITE_BOT_API_URL=http://127.0.0.1:8787 npm run dev`.
 
 Скрипт `telegram-web-app.js` підвантажується лише тоді, коли сторінку відкрито як Mini App (є параметри `tgWebApp*`):
 застосунок розгортається на весь екран, підхоплює мову користувача та дає тактильний відгук.
@@ -78,6 +93,9 @@ src/
   templates/    анімовані персонажі (builtin.ts) і векторні деталі (kit.ts)
   state/        стан (zustand), пресети, компіляція у Web Worker
   components/   інтерфейс
+  lib/          інтеграція з Telegram Mini App і надсилання файлів у чат
+worker/         бекенд бота (Cloudflare Worker)
+scripts/        налаштування бота й вебхука
 ```
 
 Ключова ідея: будь-який контент (текст чи лого) спершу перетворюється на незалежні від роздільності контури (`VectorArt`),

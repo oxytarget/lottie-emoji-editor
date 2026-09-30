@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      bot_api_url:
+        description: Bot backend URL (empty = repository variable BOT_API_URL or the Cloudflare worker)
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -31,6 +36,22 @@ jobs:
       - run: npm test
       # Fails with a clear message if Pages is not enabled for the repository yet.
       - uses: actions/configure-pages@v5
+      # "Send to chat" needs the bot backend URL (worker/); without it the Mini App falls back to downloads.
+      - name: Resolve bot backend URL
+        env:
+          INPUT_URL: ${{ inputs.bot_api_url }}
+          VAR_URL: ${{ vars.BOT_API_URL }}
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          url="${INPUT_URL:-$VAR_URL}"
+          if [ -z "$url" ] && [ -n "$CF_TOKEN" ] && [ -n "$CF_ACCOUNT" ]; then
+            sub=$(curl -fsS -H "Authorization: Bearer $CF_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain" | jq -r '.result.subdomain // empty' || true)
+            if [ -n "$sub" ]; then url="https://emoji-studio-bot.$sub.workers.dev"; fi
+          fi
+          echo "Bot backend: ${url:-none (send to chat disabled)}"
+          echo "VITE_BOT_API_URL=$url" >> "$GITHUB_ENV"
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

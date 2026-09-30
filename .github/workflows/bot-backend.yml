@@ -1,0 +1,88 @@
+# Deploys the bot backend (worker/) to Cloudflare Workers, gives it the bot token,
+# registers the Telegram webhook and rebuilds the site so the Mini App knows the backend URL.
+#
+# Repository secrets: TELEGRAM_BOT_TOKEN, CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template), CLOUDFLARE_ACCOUNT_ID.
+name: Deploy bot backend
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - 'scripts/set-bot-webhook.mjs'
+      - '.github/workflows/bot-backend.yml'
+
+permissions:
+  contents: read
+  actions: write # to trigger the Pages rebuild
+
+concurrency:
+  group: bot-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check secrets
+        id: check
+        run: |
+          missing=""
+          for name in TELEGRAM_BOT_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -z "$missing" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "::error::Add these repository secrets (Settings → Secrets and variables → Actions):$missing"
+            exit 1
+          else
+            # Automatic runs stay green until the backend is configured.
+            echo "::notice::Bot backend not configured yet (missing:$missing) — skipping deploy."
+          fi
+      - if: steps.check.outputs.ready == 'true'
+        uses: actions/checkout@v4
+      - if: steps.check.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - if: steps.check.outputs.ready == 'true'
+        run: npm ci
+        working-directory: worker
+      - if: steps.check.outputs.ready == 'true'
+        name: Deploy worker
+        id: deploy
+        working-directory: worker
+        run: |
+          npx wrangler deploy 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -n 1)
+          if [ -z "$url" ]; then
+            echo "::error::No workers.dev URL in the deploy output. Open Workers & Pages in the Cloudflare dashboard once to create your workers.dev subdomain."
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - if: steps.check.outputs.ready == 'true'
+        name: Give the worker the bot token
+        working-directory: worker
+        run: printf '%s' "$TELEGRAM_BOT_TOKEN" | npx wrangler secret put TELEGRAM_BOT_TOKEN
+      - if: steps.check.outputs.ready == 'true'
+        name: Register the Telegram webhook
+        run: node scripts/set-bot-webhook.mjs
+        env:
+          WORKER_URL: ${{ steps.deploy.outputs.url }}
+      - if: steps.check.outputs.ready == 'true'
+        name: Rebuild the site with the backend URL
+        run: gh workflow run pages.yml --ref main -f bot_api_url="$WORKER_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKER_URL: ${{ steps.deploy.outputs.url }}

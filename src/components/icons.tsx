@@ -122,3 +122,8 @@ export const RadialIcon = (p: P) => (
     <circle cx="12" cy="12" r="1" fill="currentColor" />
   </svg>
 );
+export const SendIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z" />
+  </svg>
+);

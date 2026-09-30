@@ -1510,3 +1510,37 @@ p {
     transition: none !important;
   }
 }
+
+.link-btn.is-center {
+  justify-self: center;
+  font-size: 14px;
+}
+
+.send-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ok) 12%, var(--card));
+  color: var(--ok);
+  font-weight: 800;
+}
+
+.send-done span {
+  flex: 1;
+}
+
+.btn-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.4);
+  border-top-color: currentColor;
+  animation: spin 0.8s linear infinite;
+}
+
+.icon-btn .btn-spinner {
+  border-color: var(--accent-line);
+  border-top-color: var(--accent);
+}
