@@ -341,6 +341,14 @@ const dict = {
     ru: 'Сохраните лого в «Избранное» (вкладка «Текст» → «Лого SVG» или «Лого в избранное» здесь), чтобы перетаскивать его в слои.',
     en: 'Save logos to Favourites (the Text tab → SVG logo, or “Logo to favourites” here) to drag them into layers.',
   },
+  favColorsBar: { uk: 'Обрані кольори', ru: 'Избранные цвета', en: 'Favourite colours' },
+  favColorsHint: {
+    uk: 'Перетягніть колір на будь-який кружок кольору — або торкніться його, а потім кружків, які треба пофарбувати.',
+    ru: 'Перетащите цвет на любой кружок цвета — или коснитесь его, а потом кружков, которые нужно покрасить.',
+    en: 'Drag a colour onto any colour circle — or tap it, then tap the circles to paint.',
+  },
+  paintBanner: { uk: 'Торкайтеся кружків, щоб пофарбувати', ru: 'Касайтесь кружков, чтобы покрасить', en: 'Tap circles to paint them' },
+  paintDone: { uk: 'Готово', ru: 'Готово', en: 'Done' },
 } satisfies Record<string, Record<Lang, string>>;
 
 export type I18nKey = keyof typeof dict;

@@ -2686,6 +2686,124 @@ div.note p + p {
   opacity: 0.45;
 }
 
+/* Favourite colours strip and painting */
+.fav-colors {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.fav-colors > .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fav-colors > .label svg {
+  color: #f59e0b;
+}
+
+.fav-colors .hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.fav-colors-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.fav-color {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid var(--card);
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  touch-action: none;
+  cursor: grab;
+  animation: pop-in 0.3s var(--spring, ease) backwards;
+  animation-delay: calc(var(--i, 0) * 20ms);
+  transition: transform 0.18s var(--spring, ease), box-shadow 0.2s;
+}
+
+.fav-color:active {
+  cursor: grabbing;
+  transform: scale(0.9);
+}
+
+.fav-color.is-armed {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 3px var(--accent), var(--shadow-sm);
+}
+
+.color-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 12px 28px -8px rgba(20, 10, 60, 0.55);
+  pointer-events: none;
+}
+
+/* Circles that take the painted colour */
+.app.is-painting .swatch-wrap > .swatch {
+  cursor: copy;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 25%, transparent);
+  animation: paint-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes paint-pulse {
+  50% { box-shadow: 0 0 0 2px var(--accent), 0 0 0 8px color-mix(in srgb, var(--accent) 10%, transparent); }
+}
+
+.paint-banner {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  margin: 0 auto;
+  width: fit-content;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 12px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 16px 36px -14px rgba(20, 10, 60, 0.5);
+  font-size: 13px;
+  font-weight: 800;
+  animation: banner-in 0.25s var(--ease-out, ease);
+}
+
+.app.has-native-button .paint-banner {
+  bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+@keyframes banner-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+.paint-dot {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
 /* "Edit all selected together" */
 .sync-bar {
   display: grid;

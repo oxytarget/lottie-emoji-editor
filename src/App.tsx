@@ -6,6 +6,7 @@ import { MotionButton } from './components/controls';
 import { Segmented } from './components/controls';
 import { DownloadIcon, GridIcon, LayersIcon, PaletteIcon, ResetIcon, TypeIcon } from './components/icons';
 import { Bump, usePresence, useSlidingIndicator } from './components/motion';
+import { FavColorBar, PaintBanner } from './components/FavColors';
 import { ImportedPanel, PreviewCard } from './components/PreviewCard';
 import { TemplateGrid } from './components/TemplateGrid';
 import type { I18nKey } from './i18n';
@@ -131,6 +132,7 @@ export default function App() {
   const hasParts = !!activeEmoji?.imported;
   const tab = useUi((u) => u.tab);
   const panel = tab === 'parts' && !hasParts ? 'templates' : tab;
+  const painting = useUi((u) => !!u.paintColor);
   const appRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   useStickyPreview(previewRef, appRef);
@@ -144,7 +146,7 @@ export default function App() {
   useBackButton(exportOpen, closeExport);
 
   return (
-    <div className={`app${nativeButton ? ' has-native-button' : ''}`} ref={appRef}>
+    <div className={`app${nativeButton ? ' has-native-button' : ''}${painting ? ' is-painting' : ''}`} ref={appRef}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden>
@@ -189,6 +191,7 @@ export default function App() {
         <div className="area-panel">
           <TabBar selected={selectedEmojis.length} hasParts={hasParts} />
           <div className="panel" key={panel}>
+            {panel !== 'templates' && <FavColorBar />}
             {panel === 'templates' && <TemplateGrid emojis={compiled.emojis} byId={compiled.byId} />}
             {panel === 'content' && <ContentCard missing={compiled.missingChars} fontLoading={compiled.fontLoading} svg={compiled.svg} />}
             {panel === 'colors' && <ColorsCard />}
@@ -211,6 +214,7 @@ export default function App() {
         </div>
       )}
 
+      <PaintBanner />
       {sheet.mounted && <ExportSheet emojis={selectedEmojis} onClose={closeExport} state={sheet.state} />}
     </div>
   );

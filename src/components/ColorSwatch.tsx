@@ -1,7 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { normalizeHex } from '../lottie/color';
+import { haptic } from '../lib/telegram';
 import { useEditor } from '../state/store';
+import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
+import { useSwatchTarget } from './FavColors';
 import { StarIcon } from './icons';
 import { usePresence } from './motion';
 
@@ -29,6 +32,9 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
   const toggleFav = useEditor((s) => s.toggleFavColor);
   const current = normalizeHex(color).toLowerCase();
   const isFav = favColors.includes(current);
+  // Favourite colours can be dropped on this circle, or painted onto it with a tap.
+  const paint = useUi((u) => u.paintColor);
+  useSwatchTarget(id, onChange);
   const firstColor = useRef(color);
   const changed = useRef(false);
   if (color !== firstColor.current) changed.current = true;
@@ -64,28 +70,18 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
         aria-label={label}
         aria-expanded={open}
         aria-controls={id}
-        onClick={() => setOpen((o) => !o)}
+        data-swatch={id}
+        onClick={() => {
+          if (!paint) return setOpen((o) => !o);
+          onChange(paint);
+          haptic();
+        }}
       >
         {/* Re-keyed on every colour change: a ring flashes out of the swatch. */}
         {changed.current && <span key={color} className="swatch-flash" aria-hidden />}
       </button>
       {popover.mounted && (
         <div className="popover" id={id} role="dialog" aria-label={label} data-state={popover.state}>
-          <div className="popover-grid">
-            {SWATCHES.map((c, i) => (
-              <button
-                key={c}
-                type="button"
-                className={`swatch swatch-sm${c === color.toLowerCase() ? ' is-current' : ''}`}
-                style={{ background: c, '--i': i } as React.CSSProperties}
-                aria-label={c}
-                onClick={() => {
-                  onChange(c);
-                  setOpen(false);
-                }}
-              />
-            ))}
-          </div>
           {favColors.length > 0 && (
             <div className="popover-favs">
               <span className="label">
@@ -108,6 +104,21 @@ export function ColorSwatch({ color, onChange, label, size = 'md' }: Props) {
               </div>
             </div>
           )}
+          <div className="popover-grid">
+            {SWATCHES.map((c, i) => (
+              <button
+                key={c}
+                type="button"
+                className={`swatch swatch-sm${c === color.toLowerCase() ? ' is-current' : ''}`}
+                style={{ background: c, '--i': i } as React.CSSProperties}
+                aria-label={c}
+                onClick={() => {
+                  onChange(c);
+                  setOpen(false);
+                }}
+              />
+            ))}
+          </div>
           <div className="popover-row">
             <label className="hex-field">
               <span>{t('hex')}</span>
