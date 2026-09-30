@@ -210,6 +210,6 @@ describe('platform entry points', () => {
 
   it('Cloudflare entry delegates to the shared handler', async () => {
     const res = await cfWorker.fetch(new Request('https://worker.test/'), env);
-    expect(await res.json()).toMatchObject({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, service: 'emoji-studio-bot', bot: 123456 });
   });
 });

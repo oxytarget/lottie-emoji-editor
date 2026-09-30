@@ -159,7 +159,11 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method === 'POST' && url.pathname === '/api/send') return handleSend(req, env, cors);
   if (req.method === 'POST' && url.pathname === '/api/telegram') return handleWebhook(req, env);
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/health')) return json({ ok: true, service: 'emoji-studio-bot' }, 200, cors);
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/health')) {
+    // The numeric bot id (token prefix) is public; it lets setup scripts check the right token is configured.
+    const bot = Number(env.TELEGRAM_BOT_TOKEN.split(':')[0]) || null;
+    return json({ ok: true, service: 'emoji-studio-bot', bot }, 200, cors);
+  }
   return json({ ok: false, error: 'not-found' }, 404, cors);
 }
 

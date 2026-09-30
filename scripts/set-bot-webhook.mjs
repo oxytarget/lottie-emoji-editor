@@ -27,7 +27,33 @@ async function call(method, params = {}) {
   return data.result;
 }
 
+/** Makes sure the URL really is this bot's backend before pointing the webhook at it. */
+async function checkBackend(botId) {
+  let res;
+  try {
+    res = await fetch(`${backendUrl}/api/health`, { redirect: 'manual' });
+  } catch (err) {
+    throw new Error(`cannot reach ${backendUrl} (${err instanceof Error ? err.message : err})`);
+  }
+  const body = await res.json().catch(() => null);
+  if (res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400)) {
+    throw new Error(`${backendUrl} requires a login (HTTP ${res.status}). On Vercel use the production domain (Project → Domains) or turn off Deployment Protection.`);
+  }
+  if (res.status === 500 && body?.error === 'not-configured') {
+    throw new Error('the backend has no TELEGRAM_BOT_TOKEN — add it in the hosting settings and redeploy.');
+  }
+  if (!res.ok || body?.service !== 'emoji-studio-bot') {
+    throw new Error(`${backendUrl}/api/health is not the Emoji Studio backend (HTTP ${res.status}). Check the URL.`);
+  }
+  if (body.bot !== botId) {
+    throw new Error(`the backend uses a different bot token (bot ${body.bot}, expected ${botId}). Update TELEGRAM_BOT_TOKEN there and redeploy.`);
+  }
+  console.log(`✓ Backend ${backendUrl} is up and uses this bot`);
+}
+
 try {
+  const me = await call('getMe');
+  await checkBackend(me.id);
   const secret = createHash('sha256').update(`emoji-studio-webhook:${token}`).digest('hex').slice(0, 48);
   await call('setWebhook', {
     url: `${backendUrl}/api/telegram`,
