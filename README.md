@@ -69,8 +69,8 @@ npm run preview    # перегляд збірки
 
 1. https://vercel.com/new → *Continue with GitHub* → імпортуйте `lottie-emoji-editor` (Framework Preset визначиться як Vite).
 2. У *Environment Variables* додайте `TELEGRAM_BOT_TOKEN` = токен бота → *Deploy*.
-3. Сайт на Vercel сам викликає свій `/api`. Щоб і GitHub Pages-версія надсилала файли через Vercel, додайте в репозиторій
-   `.env.production` з рядком `VITE_BOT_API_URL=https://<проєкт>.vercel.app`.
+3. Адреса бекенда для продакшн-збірок записана в `.env.production` (`VITE_BOT_API_URL=https://lottie-emoji-editor.vercel.app`) —
+   і GitHub Pages-версія, і Vercel надсилають файли через нього. Для іншого проєкту змініть цю адресу.
 4. *Actions → Set up Telegram bot → Run workflow*, у полі `backend_url` вкажіть `https://<проєкт>.vercel.app` —
    зареєструється вебхук для `/start`.
 
