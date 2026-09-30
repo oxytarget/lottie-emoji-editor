@@ -9,6 +9,7 @@ interface TelegramWebApp {
   setHeaderColor?(color: string): void;
   setBackgroundColor?(color: string): void;
   openLink?(url: string): void;
+  openTelegramLink?(url: string): void;
   HapticFeedback?: { selectionChanged(): void; impactOccurred(style: string): void };
   initDataUnsafe?: { user?: { language_code?: string } };
   platform?: string;
@@ -74,6 +75,13 @@ export function requestWriteAccess(): Promise<boolean> {
 
 export function closeApp(): void {
   webApp()?.close?.();
+}
+
+/** Opens a t.me link inside Telegram (e.g. "add emoji pack"), or in a new tab elsewhere. */
+export function openTelegramLink(url: string): void {
+  const app = webApp();
+  if (app?.openTelegramLink) app.openTelegramLink(url);
+  else window.open(url, '_blank', 'noopener');
 }
 
 export function openExternal(url: string): void {

@@ -2,70 +2,22 @@
  * Emoji Studio bot backend — plain Web `Request → Response`, runs on Vercel (api/*.ts) and Cloudflare Workers (index.ts).
  *
  *   POST /api/send       — the Mini App uploads exported files; the bot sends them to the user's chat.
+ *   POST /api/pack       — the bot creates a custom emoji pack for the user (or adds to one it made before).
  *   POST /api/telegram   — bot webhook: answers /start with a button that opens the editor.
  *   GET  /               — health check.
  *
  * Settings: TELEGRAM_BOT_TOKEN (secret), APP_URL, ALLOWED_ORIGINS (comma separated), TELEGRAM_API (optional, for tests).
  */
+import { corsHeaders, json, telegram, TelegramError, type Env } from './shared.js';
+import { handlePack } from './packs.js';
 import { pickLang, TEXTS, validateInitData, webhookSecret } from './telegram.js';
 
-export interface Env {
-  TELEGRAM_BOT_TOKEN: string;
-  APP_URL: string;
-  ALLOWED_ORIGINS?: string;
-  TELEGRAM_API?: string;
-}
+export type { Env } from './shared.js';
 
 const MAX_FILES = 20;
 const MAX_TGS_BYTES = 64 * 1024;
 const MAX_JSON_BYTES = 512 * 1024;
 const FILE_NAME = /^[\p{L}\p{N}._-]{1,80}\.(tgs|json)$/u;
-
-class TelegramError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-function corsHeaders(req: Request, env: Env): Record<string, string> {
-  const origin = req.headers.get('origin') ?? '';
-  const allowed = (env.ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!origin || !allowed.includes(origin)) return {};
-  return {
-    'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'POST, OPTIONS',
-    'access-control-allow-headers': 'content-type',
-    'access-control-max-age': '86400',
-    vary: 'origin',
-  };
-}
-
-function json(body: unknown, status: number, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...headers } });
-}
-
-async function telegram(env: Env, method: string, body: FormData | Record<string, unknown>): Promise<unknown> {
-  const base = (env.TELEGRAM_API ?? 'https://api.telegram.org').replace(/\/$/, '');
-  const init: RequestInit =
-    body instanceof FormData
-      ? { method: 'POST', body }
-      : { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } };
-  const res = await fetch(`${base}/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, init);
-  const data = (await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }))) as {
-    ok: boolean;
-    result?: unknown;
-    description?: string;
-    error_code?: number;
-  };
-  if (!data.ok) throw new TelegramError(data.error_code ?? res.status, data.description ?? 'Telegram API error');
-  return data.result;
-}
 
 /** Sends documents to a chat: sendDocument for one file, sendMediaGroup (≤ 10 per album) for more. */
 async function sendFiles(env: Env, chatId: number, files: File[], caption: string): Promise<void> {
@@ -158,6 +110,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (!env.TELEGRAM_BOT_TOKEN) return json({ ok: false, error: 'not-configured' }, 500, cors);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method === 'POST' && url.pathname === '/api/send') return handleSend(req, env, cors);
+  if (req.method === 'POST' && url.pathname === '/api/pack') return handlePack(req, env, cors);
   if (req.method === 'POST' && url.pathname === '/api/telegram') return handleWebhook(req, env);
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/health')) {
     // The numeric bot id (token prefix) is public; it lets setup scripts check the right token is configured.

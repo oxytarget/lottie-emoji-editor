@@ -16,6 +16,8 @@ export interface CompiledEmoji {
   json: string;
   check: TgsCheck;
   imported: boolean;
+  /** Emoji the custom emoji is linked to when added to a pack. */
+  emoji: string;
 }
 
 export interface Compiled {
@@ -160,9 +162,9 @@ export function useCompiled(): Compiled {
   }, [input, run]);
 
   const names = useMemo(() => {
-    const m = new Map<string, { name: Localized | string; imported: boolean }>();
-    for (const t of BUILTIN_TEMPLATES) m.set(t.id, { name: t.name, imported: false });
-    for (const i of s.imports) m.set(i.id, { name: i.name, imported: true });
+    const m = new Map<string, { name: Localized | string; imported: boolean; emoji: string }>();
+    for (const t of BUILTIN_TEMPLATES) m.set(t.id, { name: t.name, imported: false, emoji: t.emoji });
+    for (const i of s.imports) m.set(i.id, { name: i.name, imported: true, emoji: '⭐' });
     return m;
   }, [s.imports]);
 
@@ -170,7 +172,7 @@ export function useCompiled(): Compiled {
     () =>
       result.output.flatMap((o) => {
         const meta = names.get(o.id);
-        return meta ? [{ id: o.id, name: meta.name, json: o.json, check: o.check, imported: meta.imported }] : [];
+        return meta ? [{ id: o.id, name: meta.name, json: o.json, check: o.check, imported: meta.imported, emoji: meta.emoji }] : [];
       }),
     [result.output, names],
   );

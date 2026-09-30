@@ -94,17 +94,39 @@ export function pickLang(code: string | undefined): Lang {
 export const TEXTS: Record<Lang, { caption: string; welcome: string; open: string }> = {
   uk: {
     caption: 'Готово! Щоб додати емодзі в Telegram, перешліть ці файли боту @Stickers після команди /newemojipack.',
-    welcome: 'Привіт! Emoji Studio створює анімовані емодзі з тексту або вашого SVG-логотипа.\n\nНатисніть кнопку нижче, налаштуйте емодзі та натисніть «Завантажити» — я надішлю готові .tgs файли сюди в чат.',
+    welcome: 'Привіт! Emoji Studio створює анімовані емодзі з тексту або вашого SVG-логотипа.\n\nНатисніть кнопку нижче, налаштуйте емодзі, натисніть «Завантажити» і «Створити емодзі-пак» — я зберу пак і надішлю посилання сюди в чат.',
     open: '🎨 Відкрити редактор',
   },
   ru: {
     caption: 'Готово! Чтобы добавить эмодзи в Telegram, перешлите эти файлы боту @Stickers после команды /newemojipack.',
-    welcome: 'Привет! Emoji Studio создаёт анимированные эмодзи из текста или вашего SVG-логотипа.\n\nНажмите кнопку ниже, настройте эмодзи и нажмите «Скачать» — я пришлю готовые .tgs файлы сюда в чат.',
+    welcome: 'Привет! Emoji Studio создаёт анимированные эмодзи из текста или вашего SVG-логотипа.\n\nНажмите кнопку ниже, настройте эмодзи, нажмите «Скачать» и «Создать эмодзи-пак» — я соберу пак и пришлю ссылку сюда в чат.',
     open: '🎨 Открыть редактор',
   },
   en: {
     caption: 'Done! To add the emoji to Telegram, forward these files to @Stickers after sending /newemojipack.',
-    welcome: 'Hi! Emoji Studio turns text or your SVG logo into animated emoji.\n\nTap the button below, tune your emoji and press “Download” — I will send the ready .tgs files here.',
+    welcome: 'Hi! Emoji Studio turns text or your SVG logo into animated emoji.\n\nTap the button below, tune your emoji, press “Download” and “Create emoji pack” — I will build the pack and send you the link here.',
     open: '🎨 Open the editor',
   },
 };
+
+export function packTexts(lang: Lang): { created: (title: string, n: number) => string; updated: (title: string, n: number) => string; open: string } {
+  if (lang === 'uk') {
+    return {
+      created: (t, n) => `✨ Емодзі-пак «${t}» готовий! Додано емодзі: ${n}.\nНатисніть кнопку, щоб додати його собі.`,
+      updated: (t, n) => `✨ До паку «${t}» додано емодзі: ${n}.`,
+      open: '➕ Додати емодзі-пак',
+    };
+  }
+  if (lang === 'ru') {
+    return {
+      created: (t, n) => `✨ Эмодзи-пак «${t}» готов! Добавлено эмодзи: ${n}.\nНажмите кнопку, чтобы добавить его себе.`,
+      updated: (t, n) => `✨ В пак «${t}» добавлено эмодзи: ${n}.`,
+      open: '➕ Добавить эмодзи-пак',
+    };
+  }
+  return {
+    created: (t, n) => `✨ Emoji pack “${t}” is ready with ${n} emoji.\nTap the button to add it.`,
+    updated: (t, n) => `✨ Added ${n} emoji to “${t}”.`,
+    open: '➕ Add emoji pack',
+  };
+}

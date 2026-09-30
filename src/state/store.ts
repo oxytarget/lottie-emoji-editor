@@ -18,6 +18,14 @@ export interface ImportedTemplate {
 
 export type PreviewBg = 'light' | 'dark' | 'chess';
 
+/** Emoji pack the bot created for this user (remembered locally to add more emoji later). */
+export interface SavedPack {
+  name: string;
+  title: string;
+  url: string;
+  count: number;
+}
+
 export interface EditorData {
   lang: Lang;
   mode: 'text' | 'logo';
@@ -41,6 +49,7 @@ export interface EditorData {
   active: string;
   previewBg: PreviewBg;
   imports: ImportedTemplate[];
+  packs: SavedPack[];
 }
 
 export interface EditorActions {
@@ -53,6 +62,7 @@ export interface EditorActions {
   addImport(t: ImportedTemplate): void;
   updateImport(id: string, patch: Partial<ImportedTemplate>): void;
   removeImport(id: string): void;
+  savePack(pack: SavedPack): void;
   reset(): void;
 }
 
@@ -81,6 +91,7 @@ export const initialData = (): EditorData => ({
   active: 'classic',
   previewBg: 'light',
   imports: [],
+  packs: [],
 });
 
 /** Logos bigger than this are not written to localStorage (quota is ~5 MB). */
@@ -116,7 +127,12 @@ export const useEditor = create<EditorData & EditorActions>()(
           active: active === id ? 'classic' : active,
         });
       },
-      reset: () => set({ ...initialData(), lang: get().lang }),
+      savePack: (pack) => {
+        const others = get().packs.filter((p) => p.name !== pack.name);
+        set({ packs: [pack, ...others].slice(0, 20) });
+      },
+      // Packs live in Telegram, so a reset keeps the list.
+      reset: () => set({ ...initialData(), lang: get().lang, packs: get().packs }),
     }),
     {
       name: 'emoji-studio',

@@ -25,6 +25,7 @@ function twinkle(ctx: BuildContext, x: number, y: number, r: number, phase: numb
 
 const classic: Template = {
   id: 'classic',
+  emoji: '😀',
   name: { uk: 'Класика', ru: 'Классика', en: 'Classic' },
   duration: OP,
   build(ctx) {
@@ -40,6 +41,7 @@ const classic: Template = {
 
 const bounce: Template = {
   id: 'bounce',
+  emoji: '🏀',
   name: { uk: 'Стрибок', ru: 'Прыжок', en: 'Bounce' },
   duration: OP,
   build(ctx) {
@@ -63,6 +65,7 @@ const bounce: Template = {
 
 const heartTpl: Template = {
   id: 'heart',
+  emoji: '❤️',
   name: { uk: 'Серце', ru: 'Сердце', en: 'Heart' },
   duration: OP,
   build(ctx) {
@@ -90,6 +93,7 @@ const heartTpl: Template = {
 
 const starTpl: Template = {
   id: 'star',
+  emoji: '⭐',
   name: { uk: 'Зірка', ru: 'Звезда', en: 'Star' },
   duration: OP,
   build(ctx) {
@@ -109,6 +113,7 @@ const starTpl: Template = {
 
 const fire: Template = {
   id: 'fire',
+  emoji: '🔥',
   name: { uk: 'Вогонь', ru: 'Огонь', en: 'Fire' },
   duration: OP,
   build(ctx) {
@@ -141,6 +146,7 @@ const fire: Template = {
 
 const crownTpl: Template = {
   id: 'crown',
+  emoji: '👑',
   name: { uk: 'Корона', ru: 'Корона', en: 'Crown' },
   duration: OP,
   build(ctx) {
@@ -169,6 +175,7 @@ const crownTpl: Template = {
 
 const bubbleTpl: Template = {
   id: 'bubble',
+  emoji: '💬',
   name: { uk: 'Репліка', ru: 'Реплика', en: 'Speech' },
   duration: OP,
   build(ctx) {
@@ -186,6 +193,7 @@ const bubbleTpl: Template = {
 
 const sparkleTpl: Template = {
   id: 'sparkle',
+  emoji: '✨',
   name: { uk: 'Блиск', ru: 'Блеск', en: 'Sparkle' },
   duration: OP,
   build(ctx) {
@@ -201,6 +209,7 @@ const sparkleTpl: Template = {
 
 const orbit: Template = {
   id: 'orbit',
+  emoji: '🪐',
   name: { uk: 'Орбіта', ru: 'Орбита', en: 'Orbit' },
   duration: OP,
   build(ctx) {
@@ -227,6 +236,7 @@ const orbit: Template = {
 
 const zap: Template = {
   id: 'zap',
+  emoji: '⚡',
   name: { uk: 'Блискавка', ru: 'Молния', en: 'Zap' },
   duration: OP,
   build(ctx) {
@@ -252,6 +262,7 @@ const zap: Template = {
 
 const spinner: Template = {
   id: 'spinner',
+  emoji: '🔄',
   name: { uk: 'Кільце', ru: 'Кольцо', en: 'Ring' },
   duration: OP,
   build(ctx) {
@@ -281,6 +292,7 @@ const spinner: Template = {
 
 const ribbon: Template = {
   id: 'ribbon',
+  emoji: '🎀',
   name: { uk: 'Стрічка', ru: 'Лента', en: 'Ribbon' },
   duration: OP,
   build(ctx) {
@@ -303,6 +315,7 @@ const ribbon: Template = {
 
 const shake: Template = {
   id: 'shake',
+  emoji: '😮',
   name: { uk: 'Вау', ru: 'Вау', en: 'Wow' },
   duration: OP,
   build(ctx) {
@@ -331,6 +344,7 @@ const shake: Template = {
 
 const party: Template = {
   id: 'party',
+  emoji: '🎉',
   name: { uk: 'Свято', ru: 'Праздник', en: 'Party' },
   duration: OP,
   build(ctx) {
@@ -361,6 +375,7 @@ const party: Template = {
 
 const sticker: Template = {
   id: 'sticker',
+  emoji: '🏷️',
   name: { uk: 'Наліпка', ru: 'Наклейка', en: 'Sticker' },
   duration: OP,
   build(ctx) {
@@ -387,6 +402,7 @@ const sticker: Template = {
 
 const boom: Template = {
   id: 'boom',
+  emoji: '💥',
   name: { uk: 'Бум', ru: 'Бум', en: 'Boom' },
   duration: OP,
   build(ctx) {
@@ -405,6 +421,7 @@ const boom: Template = {
 
 const sun: Template = {
   id: 'sun',
+  emoji: '☀️',
   name: { uk: 'Сонце', ru: 'Солнце', en: 'Sun' },
   duration: OP,
   build(ctx) {
@@ -422,6 +439,7 @@ const sun: Template = {
 
 const coin: Template = {
   id: 'coin',
+  emoji: '🪙',
   name: { uk: 'Монета', ru: 'Монета', en: 'Coin' },
   duration: OP,
   build(ctx) {
@@ -467,6 +485,7 @@ const coin: Template = {
 
 const float: Template = {
   id: 'float',
+  emoji: '🎈',
   name: { uk: 'Лого: політ', ru: 'Лого: полёт', en: 'Logo: float' },
   duration: OP,
   logoOnly: true,
@@ -488,6 +507,7 @@ const float: Template = {
 
 const spin: Template = {
   id: 'spin',
+  emoji: '🌀',
   name: { uk: 'Лого: оберт', ru: 'Лого: оборот', en: 'Logo: spin' },
   duration: OP,
   logoOnly: true,
@@ -504,6 +524,7 @@ const spin: Template = {
 
 const pulse: Template = {
   id: 'pulse',
+  emoji: '💓',
   name: { uk: 'Лого: пульс', ru: 'Лого: пульс', en: 'Logo: pulse' },
   duration: OP,
   logoOnly: true,
@@ -527,6 +548,7 @@ const pulse: Template = {
 
 const jelly: Template = {
   id: 'jelly',
+  emoji: '🍮',
   name: { uk: 'Лого: желе', ru: 'Лого: желе', en: 'Logo: jelly' },
   duration: OP,
   logoOnly: true,

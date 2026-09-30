@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { I18nKey } from '../i18n';
+import { canUseBot, createPack, sendToChat, type BotError, type PackResult } from '../lib/botApi';
+import { closeApp, haptic, isTelegram, openExternal, openTelegramLink } from '../lib/telegram';
 import { downloadBlob, formatKb, slug, tgsFromJson, zipFiles, type TgsCheck } from '../lottie/export';
-import { canSendToChat, sendToChat, type SendError } from '../lib/sendToChat';
-import { closeApp, haptic, isTelegram, openExternal } from '../lib/telegram';
 import { useEditor } from '../state/store';
 import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { Segmented } from './controls';
-import { CheckIcon, CloseIcon, DownloadIcon, SendIcon, WarningIcon } from './icons';
+import { CheckIcon, CloseIcon, DownloadIcon, SendIcon, SparkleIcon, WarningIcon } from './icons';
 import { LottieView } from './LottieView';
 import { emojiName } from './TemplateGrid';
 
@@ -18,16 +18,27 @@ const PROBLEM_KEYS: Record<TgsCheck['problems'][number], I18nKey> = {
   duration: 'problemDuration',
 };
 
-type Format = 'tgs' | 'json';
-
-const SEND_ERROR_KEYS: Record<SendError, I18nKey> = {
+const ERROR_KEYS: Record<BotError, I18nKey> = {
   denied: 'sendDenied',
   unauthorized: 'sendUnauthorized',
   network: 'sendFailed',
   server: 'sendFailed',
+  'pack-full': 'packFull',
+  'pack-not-found': 'packNotFound',
+  'bad-emoji': 'packBadEmoji',
 };
 
-type SendState = { kind: 'idle' } | { kind: 'sending'; target: string } | { kind: 'sent'; count: number } | { kind: 'error'; error: SendError };
+/** Telegram allows up to 200 custom emoji per pack. */
+const PACK_LIMIT = 200;
+const NEW_PACK = '';
+
+type Format = 'tgs' | 'json';
+type Busy = null | string;
+type Result =
+  | { kind: 'none' }
+  | { kind: 'pack'; pack: PackResult; added: boolean }
+  | { kind: 'sent' }
+  | { kind: 'error'; error: BotError; detail?: string };
 
 export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onClose: () => void }) {
   const t = useT();
@@ -35,10 +46,20 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
   const mode = useEditor((s) => s.mode);
   const text = useEditor((s) => s.text);
   const logo = useEditor((s) => s.logo);
+  const packs = useEditor((s) => s.packs);
+  const savePack = useEditor((s) => s.savePack);
   const [format, setFormat] = useState<Format>('tgs');
-  const [send, setSend] = useState<SendState>({ kind: 'idle' });
-  // Inside Telegram, "download" means: the bot sends the files to the user's chat.
-  const viaBot = canSendToChat();
+  const [busy, setBusy] = useState<Busy>(null);
+  const [result, setResult] = useState<Result>({ kind: 'none' });
+  // Inside Telegram the bot creates packs and sends files; in a browser the files are downloaded.
+  const viaBot = canUseBot();
+
+  const defaultTitle = (mode === 'logo' ? logo?.name.replace(/\.svg$/i, '') : text.split('\n')[0])?.trim().slice(0, 64) || 'Emoji Studio';
+  const [title, setTitle] = useState(defaultTitle);
+  const [target, setTarget] = useState<string>(NEW_PACK);
+  const [emojiFor, setEmojiFor] = useState<Record<string, string>>(() => Object.fromEntries(emojis.map((e) => [e.id, e.emoji])));
+  const targetPack = packs.find((p) => p.name === target);
+  const overLimit = !!targetPack && targetPack.count + emojis.length > PACK_LIMIT;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -51,25 +72,47 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
     };
   }, [onClose]);
 
+  const fileFormat: Format = viaBot ? 'tgs' : format;
   const base = slug(mode === 'logo' ? logo?.name.replace(/\.svg$/i, '') ?? 'logo' : text);
-  const fileName = (e: CompiledEmoji) => `${base}-${slug(typeof e.name === 'string' ? e.name : e.id)}.${format}`;
-  const fileData = (e: CompiledEmoji) => (format === 'tgs' ? tgsFromJson(e.json) : e.json);
-  const mime = format === 'tgs' ? 'application/x-tgsticker' : 'application/json';
+  const fileName = (e: CompiledEmoji, f: Format = fileFormat) => `${base}-${slug(typeof e.name === 'string' ? e.name : e.id)}.${f}`;
+  const fileData = (e: CompiledEmoji, f: Format = fileFormat) => (f === 'tgs' ? tgsFromJson(e.json) : e.json);
+  const mime = (f: Format = fileFormat) => (f === 'tgs' ? 'application/x-tgsticker' : 'application/json');
+  const tooBig = useMemo(() => emojis.some((e) => !e.check.ok), [emojis]);
 
-  const sendItems = async (items: CompiledEmoji[], target: string) => {
-    if (send.kind === 'sending') return;
-    setSend({ kind: 'sending', target });
-    const res = await sendToChat(items.map((e) => ({ name: fileName(e), data: fileData(e), type: mime })));
-    setSend(res.ok ? { kind: 'sent', count: res.sent } : { kind: 'error', error: res.error });
-    if (res.ok) haptic();
-  };
-
-  const downloadOne = (e: CompiledEmoji) => downloadBlob(fileData(e), fileName(e), mime);
+  const downloadOne = (e: CompiledEmoji) => downloadBlob(fileData(e), fileName(e), mime());
   const downloadAll = () => {
     if (emojis.length === 1) return downloadOne(emojis[0]);
     const files: Record<string, Uint8Array | string> = {};
     for (const e of emojis) files[fileName(e)] = fileData(e);
-    downloadBlob(zipFiles(files), `${base}-emoji-${format}.zip`, 'application/zip');
+    downloadBlob(zipFiles(files), `${base}-emoji-${fileFormat}.zip`, 'application/zip');
+  };
+
+  const runPack = async () => {
+    if (busy) return;
+    setBusy('pack');
+    setResult({ kind: 'none' });
+    const res = await createPack({
+      title: targetPack?.title ?? title,
+      set: targetPack?.name,
+      items: emojis.map((e) => ({ name: fileName(e, 'tgs'), data: fileData(e, 'tgs'), type: mime('tgs'), emoji: emojiFor[e.id] ?? e.emoji })),
+    });
+    setBusy(null);
+    if (!res.ok) return setResult({ kind: 'error', error: res.error, detail: res.detail });
+    const pack = res.data;
+    savePack({ name: pack.name, title: pack.title, url: pack.url, count: (targetPack?.count ?? 0) + pack.added });
+    setTarget(pack.name);
+    setResult({ kind: 'pack', pack, added: !!targetPack });
+    haptic();
+  };
+
+  const runSend = async (items: CompiledEmoji[], key: string) => {
+    if (busy) return;
+    setBusy(key);
+    setResult({ kind: 'none' });
+    const res = await sendToChat(items.map((e) => ({ name: fileName(e), data: fileData(e), type: mime() })));
+    setBusy(null);
+    setResult(res.ok ? { kind: 'sent' } : { kind: 'error', error: res.error, detail: res.detail });
+    if (res.ok) haptic();
   };
 
   return (
@@ -82,14 +125,40 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
           </button>
         </div>
 
-        <Segmented
-          value={format}
-          onChange={setFormat}
-          options={[
-            { value: 'tgs', label: t('exportTgs') },
-            { value: 'json', label: t('exportJson') },
-          ]}
-        />
+        {!viaBot && (
+          <Segmented
+            value={format}
+            onChange={setFormat}
+            options={[
+              { value: 'tgs', label: t('exportTgs') },
+              { value: 'json', label: t('exportJson') },
+            ]}
+          />
+        )}
+
+        {viaBot && emojis.length > 0 && (
+          <div className="pack-form">
+            <h3 className="section-title">{t('packSection')}</h3>
+            <label className="field">
+              <span className="label">{t('packTarget')}</span>
+              <select value={target} onChange={(e) => setTarget(e.target.value)}>
+                <option value={NEW_PACK}>{t('packNew')}</option>
+                {packs.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.title} · {p.count}/{PACK_LIMIT}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!targetPack && (
+              <label className="field">
+                <span className="label">{t('packTitle')}</span>
+                <input value={title} maxLength={64} onChange={(e) => setTitle(e.target.value)} placeholder="Emoji Studio" />
+              </label>
+            )}
+            <p className="hint">{t('packEmojiHint')}</p>
+          </div>
+        )}
 
         {emojis.length === 0 ? (
           <p className="note">{t('exportEmpty')}</p>
@@ -105,16 +174,25 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
                     {formatKb(e.check.bytes)} {t('kb')} · {e.check.ok ? t('exportOk') : e.check.problems.map((p) => t(PROBLEM_KEYS[p])).join(', ')}
                   </span>
                 </div>
+                {viaBot && (
+                  <input
+                    className="emoji-input"
+                    value={emojiFor[e.id] ?? ''}
+                    maxLength={16}
+                    aria-label={`${t('packEmoji')}: ${emojiName(e.name, lang)}`}
+                    onChange={(ev) => setEmojiFor((m) => ({ ...m, [e.id]: ev.target.value }))}
+                  />
+                )}
                 {viaBot ? (
                   <button
                     type="button"
                     className="icon-btn is-round"
                     aria-label={`${t('sendToChat')} ${fileName(e)}`}
-                    title={fileName(e)}
-                    disabled={send.kind === 'sending'}
-                    onClick={() => sendItems([e], e.id)}
+                    title={t('sendToChat')}
+                    disabled={!!busy}
+                    onClick={() => runSend([e], e.id)}
                   >
-                    {send.kind === 'sending' && send.target === e.id ? <span className="btn-spinner" aria-hidden /> : <SendIcon />}
+                    {busy === e.id ? <span className="btn-spinner" aria-hidden /> : <SendIcon />}
                   </button>
                 ) : (
                   <button type="button" className="icon-btn is-round" aria-label={`${t('download')} ${fileName(e)}`} title={fileName(e)} onClick={() => downloadOne(e)}>
@@ -126,14 +204,28 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
           </ul>
         )}
 
-        {emojis.length > 0 && viaBot && (
+        {viaBot && emojis.length > 0 && (
           <>
-            <button type="button" className="primary-btn" disabled={send.kind === 'sending'} onClick={() => sendItems(emojis, 'all')}>
-              {send.kind === 'sending' && send.target === 'all' ? <span className="btn-spinner" aria-hidden /> : <SendIcon />}
-              {send.kind === 'sending' ? t('sending') : `${t('sendToChat')} (${emojis.length})`}
+            {overLimit && (
+              <p className="note is-warn">
+                <WarningIcon width={16} height={16} /> {t('packFull')}
+              </p>
+            )}
+            <button type="button" className="primary-btn" disabled={!!busy || overLimit || tooBig} onClick={runPack}>
+              {busy === 'pack' ? <span className="btn-spinner" aria-hidden /> : <SparkleIcon />}
+              {busy === 'pack' ? t('packCreating') : `${targetPack ? t('packAdd') : t('packCreate')} (${emojis.length})`}
             </button>
-            {send.kind === 'idle' && <p className="note">{t('sendHint')}</p>}
-            {send.kind === 'sent' && (
+
+            {result.kind === 'pack' && (
+              <div className="send-done" role="status">
+                <CheckIcon width={18} height={18} strokeWidth={3} />
+                <span>{result.added ? t('packUpdated') : t('packCreated')}</span>
+                <button type="button" className="pill-btn is-compact" onClick={() => openTelegramLink(result.pack.url)}>
+                  {t('packOpen')}
+                </button>
+              </div>
+            )}
+            {result.kind === 'sent' && (
               <div className="send-done" role="status">
                 <CheckIcon width={18} height={18} strokeWidth={3} />
                 <span>{t('sentToChat')}</span>
@@ -142,11 +234,17 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
                 </button>
               </div>
             )}
-            {send.kind === 'error' && (
+            {result.kind === 'error' && (
               <p className="note is-error" role="alert">
-                <WarningIcon width={16} height={16} /> {t(SEND_ERROR_KEYS[send.error])}
+                <WarningIcon width={16} height={16} /> {t(ERROR_KEYS[result.error])}
+                {result.detail ? ` (${result.detail})` : ''}
               </p>
             )}
+
+            <button type="button" className="secondary-btn" disabled={!!busy} onClick={() => runSend(emojis, 'send')}>
+              {busy === 'send' ? <span className="btn-spinner" aria-hidden /> : <SendIcon />}
+              {t('sendToChat')} ({emojis.length})
+            </button>
             <button type="button" className="link-btn is-center" onClick={downloadAll}>
               {t('downloadInstead')}
             </button>
@@ -168,14 +266,16 @@ export function ExportSheet({ emojis, onClose }: { emojis: CompiledEmoji[]; onCl
           </p>
         )}
 
-        <details className="howto">
-          <summary>{t('howToTitle')}</summary>
-          <ol>
-            <li>{t('howTo1')}</li>
-            <li>{t('howTo2')}</li>
-            <li>{t('howTo3')}</li>
-          </ol>
-        </details>
+        {!viaBot && (
+          <details className="howto">
+            <summary>{t('howToTitle')}</summary>
+            <ol>
+              <li>{t('howTo1')}</li>
+              <li>{t('howTo2')}</li>
+              <li>{t('howTo3')}</li>
+            </ol>
+          </details>
+        )}
       </div>
     </div>
   );

@@ -46,6 +46,8 @@ export interface Template {
   name: Localized;
   /** Frames at 60 fps (Telegram limit: 180). */
   duration: number;
+  /** Default emoji the custom emoji is linked to in a pack. */
+  emoji: string;
   /** Templates without a body — best for logos. */
   logoOnly?: boolean;
   build(ctx: BuildContext): void;

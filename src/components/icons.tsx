@@ -127,3 +127,8 @@ export const SendIcon = (p: P) => (
     <path d="M21 3L10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z" />
   </svg>
 );
+export const SparkleIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
+  </svg>
+);

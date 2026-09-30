@@ -1544,3 +1544,71 @@ p {
   border-color: var(--accent-line);
   border-top-color: var(--accent);
 }
+
+.pack-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.emoji-input {
+  width: 48px;
+  height: 44px;
+  flex: none;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  text-align: center;
+  font-size: 22px;
+  padding: 0;
+}
+
+.emoji-input:focus,
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  border-radius: 18px;
+  border: 2px solid var(--accent-line);
+  background: var(--card);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.secondary-btn .btn-spinner {
+  border-color: var(--accent-line);
+  border-top-color: var(--accent);
+}
