@@ -42,9 +42,15 @@ npm run preview    # перегляд збірки
 
 ## Telegram Mini App
 
-`dist/` — це статичний сайт, тож його можна розмістити на будь-якому HTTPS-хостингу (GitHub Pages, Netlify, Vercel, Cloudflare Pages).
-У репозиторії є workflow `.github/workflows/pages.yml`: увімкніть *Settings → Pages → Source: GitHub Actions* і запустіть його вручну.
-Потім у [@BotFather](https://t.me/BotFather) → *Bot Settings → Menu Button / Configure Mini App* вкажіть отриманий URL.
+`dist/` — це статичний сайт, тож його можна розмістити на будь-якому HTTPS-хостингу. У репозиторії налаштовано
+**GitHub Pages** (`.github/workflows/pages.yml`): кожен пуш у `main` проганяє тести, збирає застосунок і публікує його на
+`https://oxytarget.github.io/lottie-emoji-editor/`. Запустити деплой вручну можна з вкладки *Actions → Deploy to GitHub Pages → Run workflow*.
+
+Одноразове налаштування: *Settings → Pages → Build and deployment → Source: **GitHub Actions***.
+Для приватного репозиторію Pages доступні лише на платних тарифах GitHub (Pro / Team); на безкоштовному — зробіть
+репозиторій публічним або використайте Netlify, Vercel чи Cloudflare Pages (команда збірки `npm run build`, тека `dist`).
+
+Потім у [@BotFather](https://t.me/BotFather) → *Bot Settings → Menu Button / Configure Mini App* вкажіть URL застосунку.
 
 Скрипт `telegram-web-app.js` підвантажується лише тоді, коли сторінку відкрито як Mini App (є параметри `tgWebApp*`):
 застосунок розгортається на весь екран, підхоплює мову користувача та дає тактильний відгук.
