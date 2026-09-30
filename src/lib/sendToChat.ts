@@ -1,7 +1,11 @@
 import { initData, requestWriteAccess } from './telegram';
 
-/** Bot backend URL, baked in at build time (see worker/ and the Pages workflow). */
-export const BOT_API_URL = (import.meta.env.VITE_BOT_API_URL ?? '').trim().replace(/\/+$/, '');
+/**
+ * Bot backend base URL, baked in at build time: an absolute URL (GitHub Pages → Vercel/Cloudflare)
+ * or "/" when the API is served from the same origin (Vercel). Empty disables "send to chat".
+ */
+const RAW_API_URL = (import.meta.env.VITE_BOT_API_URL ?? '').trim();
+export const BOT_API_URL = RAW_API_URL.replace(/\/+$/, '');
 
 export interface OutgoingFile {
   name: string;
@@ -14,7 +18,7 @@ export type SendResult = { ok: true; sent: number } | { ok: false; error: SendEr
 
 /** True inside the Telegram Mini App when a bot backend is configured. */
 export function canSendToChat(): boolean {
-  return !!BOT_API_URL && !!initData();
+  return !!RAW_API_URL && !!initData();
 }
 
 async function post(files: OutgoingFile[]): Promise<Response> {

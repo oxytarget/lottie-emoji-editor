@@ -26,6 +26,7 @@
   "include": [
     "src",
     "worker/src",
+    "api",
     "vite.config.ts"
   ]
 }

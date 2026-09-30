@@ -10,6 +10,10 @@ on:
         description: Mini App URL (leave empty for this repository's GitHub Pages URL)
         required: false
         default: ''
+      backend_url:
+        description: Bot backend URL, e.g. https://<project>.vercel.app — registers the /start webhook
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -26,3 +30,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           APP_URL: ${{ inputs.app_url }}
+      - if: inputs.backend_url != ''
+        run: node scripts/set-bot-webhook.mjs
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          BACKEND_URL: ${{ inputs.backend_url }}

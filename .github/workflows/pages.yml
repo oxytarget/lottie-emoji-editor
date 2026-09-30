@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       bot_api_url:
-        description: Bot backend URL (empty = repository variable BOT_API_URL or the Cloudflare worker)
+        description: Bot backend URL (empty = .env.production, repository variable BOT_API_URL or the Cloudflare worker)
         required: false
         default: ''
 
@@ -50,8 +50,13 @@ jobs:
               "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain" | jq -r '.result.subdomain // empty' || true)
             if [ -n "$sub" ]; then url="https://emoji-studio-bot.$sub.workers.dev"; fi
           fi
-          echo "Bot backend: ${url:-none (send to chat disabled)}"
-          echo "VITE_BOT_API_URL=$url" >> "$GITHUB_ENV"
+          if [ -n "$url" ]; then
+            echo "Bot backend: $url"
+            echo "VITE_BOT_API_URL=$url" >> "$GITHUB_ENV"
+          else
+            # Keep .env.production (if any) in charge — an empty variable would override it.
+            echo "Bot backend: from .env.production or none"
+          fi
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -58,24 +58,28 @@ npm run preview    # перегляд збірки
 команда `/start`, опис і короткий опис (uk / ru / en). Потрібен секрет `TELEGRAM_BOT_TOKEN`
 (*Settings → Secrets and variables → Actions*). Токен ніколи не комітьте в репозиторій.
 
-**Бекенд бота** (`worker/`, Cloudflare Workers, безкоштовний тариф):
-- `POST /api/send` — у Telegram кнопка «Надіслати в чат» у вікні експорту відправляє файли сюди; воркер перевіряє
+**Бекенд бота** (`api/` + `worker/src/app.ts`, звичайні Web `Request → Response`):
+- `POST /api/send` — у Telegram кнопка «Надіслати в чат» у вікні експорту відправляє файли сюди; бекенд перевіряє
   підпис `initData` і бот надсилає `.tgs` файлами користувачу в чат (альбомами по 10). Якщо користувач ще не натискав Start,
   Mini App попросить дозвіл на повідомлення й повторить спробу;
-- `POST /telegram` — вебхук: на `/start` бот відповідає привітанням і кнопкою «Відкрити редактор».
+- `POST /api/telegram` — вебхук: на `/start` бот відповідає привітанням і кнопкою «Відкрити редактор»;
+- `GET /api/health` — перевірка, чи задано токен.
 
-Розгортання — workflow `.github/workflows/bot-backend.yml` (вручну або автоматично при змінах у `worker/`):
-деплой воркера, передача йому токена, реєстрація вебхука й перезбірка сайту з адресою бекенда.
-Секрети репозиторію:
+#### Варіант 1: Vercel (рекомендовано, без ключів API)
 
-| Секрет | Де взяти |
-| --- | --- |
-| `TELEGRAM_BOT_TOKEN` | @BotFather |
-| `CLOUDFLARE_API_TOKEN` | dash.cloudflare.com → *My Profile → API Tokens → Create Token* → шаблон **Edit Cloudflare Workers** |
-| `CLOUDFLARE_ACCOUNT_ID` | dash.cloudflare.com → *Workers & Pages* → Account ID праворуч |
+1. https://vercel.com/new → *Continue with GitHub* → імпортуйте `lottie-emoji-editor` (Framework Preset визначиться як Vite).
+2. У *Environment Variables* додайте `TELEGRAM_BOT_TOKEN` = токен бота → *Deploy*.
+3. Сайт на Vercel сам викликає свій `/api`. Щоб і GitHub Pages-версія надсилала файли через Vercel, додайте в репозиторій
+   `.env.production` з рядком `VITE_BOT_API_URL=https://<проєкт>.vercel.app`.
+4. *Actions → Set up Telegram bot → Run workflow*, у полі `backend_url` вкажіть `https://<проєкт>.vercel.app` —
+   зареєструється вебхук для `/start`.
 
-Перед першим деплоєм відкрийте *Workers & Pages* у панелі Cloudflare, щоб створився ваш піддомен `*.workers.dev`.
-Адресу бекенда збірка сайту визначає сама; за потреби її можна задати змінною репозиторію `BOT_API_URL`.
+#### Варіант 2: Cloudflare Workers
+
+Workflow `.github/workflows/bot-backend.yml` деплоїть `worker/`, передає йому токен, реєструє вебхук і перезбирає сайт.
+Секрети репозиторію: `TELEGRAM_BOT_TOKEN`, `CLOUDFLARE_API_TOKEN` (шаблон **Edit Cloudflare Workers** на
+https://dash.cloudflare.com/profile/api-tokens), `CLOUDFLARE_ACCOUNT_ID` (32 символи в адресі панелі після `dash.cloudflare.com/`).
+Перед першим деплоєм відкрийте https://dash.cloudflare.com/?to=/:account/workers/onboarding, щоб створився піддомен `*.workers.dev`.
 
 Локально: `cd worker && npm install`, створіть `worker/.dev.vars` з `TELEGRAM_BOT_TOKEN=...` і `ALLOWED_ORIGINS=http://localhost:5173`,
 запустіть `npx wrangler dev`, а сайт — `VITE_BOT_API_URL=http://127.0.0.1:8787 npm run dev`.
@@ -94,7 +98,8 @@ src/
   state/        стан (zustand), пресети, компіляція у Web Worker
   components/   інтерфейс
   lib/          інтеграція з Telegram Mini App і надсилання файлів у чат
-worker/         бекенд бота (Cloudflare Worker)
+api/            функції Vercel (бекенд бота)
+worker/         спільний код бекенда + вхід для Cloudflare Workers
 scripts/        налаштування бота й вебхука
 ```
 

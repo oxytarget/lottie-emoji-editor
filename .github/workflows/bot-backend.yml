@@ -79,7 +79,7 @@ jobs:
         name: Register the Telegram webhook
         run: node scripts/set-bot-webhook.mjs
         env:
-          WORKER_URL: ${{ steps.deploy.outputs.url }}
+          BACKEND_URL: ${{ steps.deploy.outputs.url }}
       - if: steps.check.outputs.ready == 'true'
         name: Rebuild the site with the backend URL
         run: gh workflow run pages.yml --ref main -f bot_api_url="$WORKER_URL"
