@@ -115,9 +115,16 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
     setSelected(true);
   }, [target]);
 
-  // Follow the rendered content every frame (it moves with the animation).
+  // Follow the rendered content (it moves with the animation): every frame while selected or dragged, a few
+  // times a second otherwise — measuring forces a layout, and on phones that was a big share of every frame.
+  // A press on the content between updates is caught by the stage (see the hit test below).
+  const live = useRef(false);
+  live.current = selected || active;
+  const wake = useRef<() => void>(() => {});
   useEffect(() => {
     let raf = 0;
+    let timer = 0;
+    let stopped = false;
     const tick = () => {
       const box = boxRef.current;
       const root = stage.current;
@@ -137,11 +144,27 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
           if (lockRef.current) lockRef.current.style.display = 'none';
         }
       }
+      if (stopped) return;
+      if (live.current) raf = requestAnimationFrame(tick);
+      else timer = window.setTimeout(tick, 250);
+    };
+    wake.current = () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
   }, [stage, target]);
+  useEffect(() => {
+    if (selected || active) wake.current();
+  }, [selected, active]);
+  const targetRef = useRef(target);
+  targetRef.current = target;
 
   // Double tap (two quick taps close together) anywhere on the stage.
   useEffect(() => {
@@ -242,16 +265,42 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
     begin(mode, e, axis);
   };
 
-  // Pointers anywhere on the stage: a second finger for pinch, or one finger to scroll the page.
+  // Pointers anywhere on the stage: a press on the content, a second finger for pinch, or one finger to scroll.
+  const onActiveRef = useRef(onActive);
+  onActiveRef.current = onActive;
   useEffect(() => {
     const root = stage.current;
     if (!root) return;
+    const onContent = (e: PointerEvent) =>
+      e.button <= 0 &&
+      !(e.target as Element | null)?.closest?.('.canvas-lock, .grad-editor') &&
+      document.elementsFromPoint(e.clientX, e.clientY).some((el) => root.contains(el) && !!el.closest(`svg .${targetRef.current}`));
     const down = (e: PointerEvent) => {
       const g = gesture.current;
       if (g && g.pointers.size === 1) {
         g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         gesture.current = { ...g, mode: 'pinch', start: latest.current, origin: new Map(g.pointers) };
         root.setPointerCapture?.(e.pointerId);
+      } else if (!g && !boxRef.current?.contains(e.target as Node) && onContent(e)) {
+        // A press on the content while the frame was not following it closely: drag it all the same.
+        e.preventDefault();
+        root.setPointerCapture?.(e.pointerId);
+        setSelected(true);
+        const el = root.querySelector(`svg .${targetRef.current}`)!.getBoundingClientRect();
+        const p = { x: e.clientX, y: e.clientY };
+        gesture.current = {
+          mode: 'move',
+          axis: 'xy',
+          initial: latest.current,
+          start: latest.current,
+          k: unitsPerPx(),
+          center: { x: el.left + el.width / 2, y: el.top + el.height / 2 },
+          pointers: new Map([[e.pointerId, p]]),
+          origin: new Map([[e.pointerId, p]]),
+          last: p,
+        };
+        setActive(true);
+        onActiveRef.current?.(true);
       } else if (!g && e.pointerType === 'touch' && !boxRef.current?.contains(e.target as Node)) {
         const p = { x: e.clientX, y: e.clientY };
         gesture.current = { mode: 'scroll', axis: 'xy', initial: latest.current, start: latest.current, k: 1, center: p, pointers: new Map([[e.pointerId, p]]), origin: new Map([[e.pointerId, p]]), last: p };

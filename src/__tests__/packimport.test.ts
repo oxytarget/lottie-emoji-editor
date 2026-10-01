@@ -105,9 +105,70 @@ describe('part transforms', () => {
     const src = base();
     const plain = toJson(applyPartEdits(src, { hidden: ['l1'] }));
     const tagged = toJson(applyPartEdits(src, { hidden: ['l1'], annotate: true }));
+    const body = flattenParts(listParts(src)).findIndex((p) => p.name === 'Body');
     expect(tagged).toContain('"cl":"pt-0"');
-    expect(tagged).toContain('"cl":"pt-2"');
+    expect(tagged).toContain(`"cl":"pt-${body}"`);
     expect(stripPartClasses(tagged)).toBe(plain);
+  });
+});
+
+describe('single shapes as parts', () => {
+  // One group with the badge and the logo drawn in it: two paths share the fill.
+  const badge = () =>
+    anim([
+      layer(1, 'Art', [
+        { ty: 'gr', nm: 'Badge', it: [{ ty: 'el', p: st([0, 0]), s: st([200, 200]) }, logoPath(1, -30, -15), { ty: 'fl', c: st([1, 0, 0, 1]), o: st(100) }, tr()] },
+      ]),
+    ]);
+
+  it('lists the shapes of a group that draws more than one', () => {
+    const parts = flattenParts(listParts(badge()));
+    const paths = parts.filter((p) => p.kind === 'path');
+    expect(paths.map((p) => p.id)).toEqual(['l0/g0/g0', 'l0/g0/g1']);
+    expect(paths.map((p) => p.name)).toEqual(['Ellipse 1', 'Path 1']);
+    expect(paths.every((p) => !p.replaceable)).toBe(true);
+    // A group with one shape and no subgroups has nothing finer to list.
+    expect(flattenParts(listParts(anim([layer(1, 'A', [blob(50, 50)])]))).some((p) => p.kind === 'path')).toBe(false);
+  });
+
+  it('hides one shape and keeps the rest of the group', () => {
+    const src = badge();
+    const before = partBounds(src, 'l0/g0/g0')!;
+    expect(before.w).toBeCloseTo(200, 3);
+    expect(partBounds(src, 'l0/g0/g1')!.w).toBeCloseTo(60, 3);
+    const out = applyPartEdits(src, { hidden: ['l0/g0/g1'] });
+    const group = out.layers[0].shapes![0] as unknown as { it: ShapeItem[] };
+    expect(group.it.map((it) => it.ty)).toEqual(['el', 'fl', 'tr']);
+    expect(partBounds(out, 'l0/g0')!.w).toBeCloseTo(200, 3);
+    // Hiding the whole group still wins over its shapes.
+    const gone = applyPartEdits(src, { hidden: ['l0/g0', 'l0/g0/g1'] });
+    expect(gone.layers[0].shapes).toHaveLength(0);
+  });
+
+  it('shows one shape alone for its thumbnail, and does not let it leave its group', async () => {
+    const { isolatePart } = await import('../lottie/parts');
+    const { checkOp } = await import('../lottie/layout');
+    const src = badge();
+    const alone = isolatePart(src, 'l0/g0/g1');
+    const group = alone.layers[0].shapes![0] as unknown as { it: ShapeItem[] };
+    expect(group.it.map((it) => it.ty)).toEqual(['sh', 'fl', 'tr']);
+    expect(checkOp(src, { kind: 'move', part: 'l0/g0/g1', at: { parent: 'l0', index: 0 } })).toBe('no-part');
+  });
+
+  it('keeps only one shape of a group in one go, and brings the others back', async () => {
+    const { applyImportOp } = await import('../state/importOps');
+    // The badge circle plus a logo of three contours in the same group.
+    const src = anim([
+      layer(1, 'Art', [{ ty: 'gr', nm: 'Badge', it: [{ ty: 'el', p: st([0, 0]), s: st([200, 200]) }, logoPath(1), logoPath(1, 70), logoPath(0.5, 0, 40), { ty: 'fl', c: st([1, 0, 0, 1]), o: st(100) }, tr()] }]),
+      layer(2, 'Other', [blob(40, 40)]),
+    ]);
+    const t = { data: src, hidden: ['l1'], replace: null } as never;
+    const only = applyImportOp(t, { kind: 'onlyShape', part: 'l0/g0/g0', only: true });
+    expect(only.hidden).toEqual(['l1', 'l0/g0/g1', 'l0/g0/g2', 'l0/g0/g3']);
+    const group = applyPartEdits(src, { hidden: only.hidden! }).layers[0].shapes![0] as unknown as { it: ShapeItem[] };
+    expect(group.it.map((it) => it.ty)).toEqual(['el', 'fl', 'tr']);
+    const back = applyImportOp({ ...(t as object), hidden: only.hidden } as never, { kind: 'onlyShape', part: 'l0/g0/g0', only: false });
+    expect(back.hidden).toEqual(['l1']);
   });
 });
 

@@ -47,17 +47,29 @@ interface UiState {
   setSyncReport(report: { applied: number; total: number }): void;
 }
 
+const pendingVisible = new Map<string, boolean>();
+let visibleTimer: ReturnType<typeof setTimeout> | undefined;
+
 export const useUi = create<UiState>()((set, get) => ({
   tab: 'templates',
   setTab: (tab) => set({ tab }),
   visible: new Set(),
+  // Batched: while scrolling a big pack, tiles come and go every few pixels, and each change recompiles and
+  // re-renders — one update per moment is enough.
   setVisible: (id, visible) => {
-    const current = get().visible;
-    if (current.has(id) === visible) return;
-    const next = new Set(current);
-    if (visible) next.add(id);
-    else next.delete(id);
-    set({ visible: next });
+    pendingVisible.set(id, visible);
+    if (visibleTimer) return;
+    visibleTimer = setTimeout(() => {
+      visibleTimer = undefined;
+      const current = get().visible;
+      const next = new Set(current);
+      for (const [key, on] of pendingVisible) {
+        if (on) next.add(key);
+        else next.delete(key);
+      }
+      pendingVisible.clear();
+      if (next.size !== current.size || [...next].some((key) => !current.has(key))) set({ visible: next });
+    }, 120);
   },
   grab: null,
   setGrab: (grab) => set({ grab }),

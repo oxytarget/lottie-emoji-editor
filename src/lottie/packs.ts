@@ -34,7 +34,8 @@ function overlap(a: BBox, b: BBox): number {
   return (w * h) / Math.max(1e-6, Math.min(area(a), area(b)));
 }
 
-function candidates(anim: LottieAnimation): Candidate[] {
+/** The parts of one sticker that may be the logo (the slow part of the analysis — see `analyzePack`). */
+export function packCandidates(anim: LottieAnimation): Candidate[] {
   return flattenParts(listParts(anim)).flatMap((part) => {
     if (!part.replaceable || part.kind === 'solid') return [];
     const geo = partGeometry(anim, part.id);
@@ -42,8 +43,10 @@ function candidates(anim: LottieAnimation): Candidate[] {
   });
 }
 
-export function analyzePack(anims: readonly LottieAnimation[]): PackPick[] {
-  const all = anims.map(candidates);
+export type { Candidate as PackCandidate };
+
+/** `all` may be computed beforehand (sticker by sticker, so a big pack does not freeze the page). */
+export function analyzePack(anims: readonly LottieAnimation[], all: Candidate[][] = anims.map(packCandidates)): PackPick[] {
   // Cluster equal outlines (same structure, points within tolerance) and count the stickers of each cluster.
   const clusters = new Map<string, Array<{ rep: Candidate; id: number }>>();
   const seen = new Map<number, Set<number>>();

@@ -2,7 +2,7 @@ import { fetchSticker, fetchStickerSet } from '../lib/botApi';
 import { readLottieFile } from '../lottie/export';
 import { extractPalette, normalizeForTgs } from '../lottie/imported';
 import { applyLayout } from '../lottie/layout';
-import { analyzePack } from '../lottie/packs';
+import { analyzePack, packCandidates } from '../lottie/packs';
 import { logoArt } from './logoArt';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from './store';
@@ -57,9 +57,13 @@ export async function loadPack(name: string, personal: boolean): Promise<void> {
   const loaded = items.flatMap((item, i) => (anims[i] ? [{ item, data: anims[i] as LottieAnimation }] : []));
   if (!loaded.length) return status({ state: 'error', error: 'network' });
 
-  // Let the progress bar paint before the (synchronous) analysis.
-  await new Promise((r) => setTimeout(r, 0));
-  const picks = analyzePack(loaded.map((l) => l.data));
+  // The analysis sticker by sticker, giving the page a breath in between (one long task froze phones).
+  const all = [];
+  for (const { data } of loaded) {
+    await new Promise((r) => setTimeout(r, 0));
+    all.push(packCandidates(data));
+  }
+  const picks = analyzePack(loaded.map((l) => l.data), all);
   const edits = useEditor.getState().packEdits;
   const templates: ImportedTemplate[] = loaded.map(({ item, data }, i) => {
     const pick = picks[i];

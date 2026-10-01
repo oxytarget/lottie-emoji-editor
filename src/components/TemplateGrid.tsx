@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { packsAvailable, parsePackLink } from '../lib/botApi';
 import { haptic } from '../lib/telegram';
 import { formatKb, readLottieFile } from '../lottie/export';
@@ -12,7 +12,8 @@ import { useT } from '../state/useT';
 import type { Localized } from '../templates/types';
 import { MotionButton } from './controls';
 import { CheckIcon, ChevronIcon, PlusIcon, StickersIcon, TrashIcon } from './icons';
-import { LottieView } from './LottieView';
+import { usePoster } from '../state/posters';
+import { LottieView, useInView } from './LottieView';
 import { usePresence } from './motion';
 
 export function emojiName(name: Localized | string, lang: keyof Localized): string {
@@ -38,7 +39,49 @@ function useReportVisible(ref: React.RefObject<Element | null>, id: string | nul
   }, [ref, id]);
 }
 
-function Tile(props: { id: string; name: string; emoji?: CompiledEmoji; index: number; report?: boolean }) {
+/**
+ * A tile shows a still poster; it plays only under the mouse (phones never play the grid — the big preview
+ * plays the chosen one). A grid of live players kept phones busy and choppy.
+ */
+function TileArt({ json, name, host }: { json: string; name: string; host: React.RefObject<HTMLElement | null> }) {
+  const inView = useInView(host);
+  const [live, setLive] = useState(false);
+  const poster = usePoster(json, { frac: 0.4 }, 192, inView);
+  useEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    const enter = (e: PointerEvent) => e.pointerType === 'mouse' && setLive(true);
+    const leave = () => setLive(false);
+    el.addEventListener('pointerenter', enter);
+    el.addEventListener('pointerleave', leave);
+    return () => {
+      el.removeEventListener('pointerenter', enter);
+      el.removeEventListener('pointerleave', leave);
+    };
+  }, [host]);
+  if (live) return <LottieView json={json} className="tile-anim" label={name} />;
+  return poster ? <img className="tile-anim tile-poster" src={poster} alt="" draggable={false} /> : <span className="tile-skeleton" aria-hidden />;
+}
+
+interface TileProps {
+  id: string;
+  name: string;
+  emoji?: CompiledEmoji;
+  index: number;
+  report?: boolean;
+}
+
+/** Re-render a tile only when its own picture or size changes (results of a compile are new objects). */
+const sameTile = (a: TileProps, b: TileProps) =>
+  a.id === b.id &&
+  a.name === b.name &&
+  a.index === b.index &&
+  a.report === b.report &&
+  a.emoji?.json === b.emoji?.json &&
+  a.emoji?.check.bytes === b.emoji?.check.bytes &&
+  a.emoji?.check.ok === b.emoji?.check.ok;
+
+const Tile = memo(function Tile(props: TileProps) {
   const t = useT();
   const { id, name, emoji } = props;
   const selected = useEditor((s) => s.selected.includes(id));
@@ -59,7 +102,7 @@ function Tile(props: { id: string; name: string; emoji?: CompiledEmoji; index: n
         haptic();
       }}
     >
-      {emoji ? <LottieView json={emoji.json} className="tile-anim" label={name} /> : <span className="tile-skeleton" aria-hidden />}
+      {emoji ? <TileArt json={emoji.json} name={name} host={ref} /> : <span className="tile-skeleton" aria-hidden />}
       <span className="tile-name">{name}</span>
       {emoji && (
         <span className={`tile-size${emoji.check.ok ? '' : ' is-bad'}`}>
@@ -73,7 +116,7 @@ function Tile(props: { id: string; name: string; emoji?: CompiledEmoji; index: n
       )}
     </button>
   );
-}
+}, sameTile);
 
 function PackForm({ onDone }: { onDone: () => void }) {
   const t = useT();

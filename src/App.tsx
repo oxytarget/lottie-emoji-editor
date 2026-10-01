@@ -88,11 +88,21 @@ function useStickyPreview(ref: React.RefObject<HTMLElement | null>, app: React.R
     };
     root.addEventListener('focusin', typing);
     root.addEventListener('focusout', typing);
+    // Scrolled into the panel: the canvas gets compact (hysteresis, so it does not flicker at the edge).
+    let scrolled = false;
+    const onScroll = () => {
+      const next = scrolled ? window.scrollY > 40 : window.scrollY > 140;
+      if (next === scrolled) return;
+      scrolled = next;
+      root.classList.toggle('is-scrolled', next);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       window.clearTimeout(timer);
       ro?.disconnect();
       root.removeEventListener('focusin', typing);
       root.removeEventListener('focusout', typing);
+      window.removeEventListener('scroll', onScroll);
     };
   }, [ref, app]);
 }

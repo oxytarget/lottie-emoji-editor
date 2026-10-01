@@ -14,7 +14,7 @@ import type { BBox, Bezier, Layer, LottieAnimation, Matrix, ShapeItem } from './
  * "l3/g0" = first group of layer #3's shapes, "l3/g0/g2" = a nested group.
  */
 
-export type PartKind = 'shape' | 'precomp' | 'null' | 'image' | 'text' | 'solid' | 'group' | 'other';
+export type PartKind = 'shape' | 'precomp' | 'null' | 'image' | 'text' | 'solid' | 'group' | 'path' | 'other';
 
 export interface Part {
   id: string;
@@ -39,7 +39,10 @@ interface Asset {
 }
 
 const NAME_HINT = /(text|txt|logo|emoji|title|name|word|label|brand|caption|content|надпис|текст|лого|назва|слово|имя|ім'я)/i;
-const MAX_GROUP_DEPTH = 3;
+const MAX_GROUP_DEPTH = 6;
+/** Drawn shapes inside a group: a path, ellipse, rectangle or star. */
+const GEOMETRY = new Set(['sh', 'el', 'rc', 'sr']);
+const SHAPE_NAMES: Record<string, string> = { sh: 'Path', el: 'Ellipse', rc: 'Rectangle', sr: 'Star' };
 
 const KIND_BY_TYPE: Record<number, PartKind> = { 0: 'precomp', 1: 'solid', 2: 'image', 3: 'null', 4: 'shape', 5: 'text' };
 
@@ -193,12 +196,25 @@ function unwrap(groups: Part[]): Part[] {
   return list.length > 1 || (list.length === 1 && isInserted(list[0])) ? list : [];
 }
 
+/**
+ * Groups — and the single shapes drawn in a group when there is a choice to make (two or more of them, or
+ * shapes next to groups): a logo drawn with the same fill as the body can then be hidden on its own.
+ */
 function groupParts(items: readonly ShapeItem[], prefix: string, groupDepth: number): Part[] {
   if (groupDepth > MAX_GROUP_DEPTH) return [];
-  return items
-    .map((it, idx) => ({ it, idx }))
-    .filter(({ it }) => it.ty === 'gr')
+  const indexed = items.map((it, idx) => ({ it, idx }));
+  const shapes = indexed.filter(({ it }) => GEOMETRY.has(it.ty));
+  const hasGroups = indexed.some(({ it }) => it.ty === 'gr');
+  const listShapes = shapes.length >= 2 || (shapes.length >= 1 && hasGroups);
+  const counts: Record<string, number> = {};
+  return indexed
+    .filter(({ it }) => it.ty === 'gr' || (listShapes && GEOMETRY.has(it.ty)))
     .map(({ it, idx }) => {
+      if (it.ty !== 'gr') {
+        counts[it.ty] = (counts[it.ty] ?? 0) + 1;
+        const name = typeof it.nm === 'string' && it.nm ? it.nm : `${SHAPE_NAMES[it.ty]} ${counts[it.ty]}`;
+        return { id: `${prefix}/g${idx}`, name, kind: 'path' as const, detected: false, replaceable: false, children: [] };
+      }
       const id = `${prefix}/g${idx}`;
       const children = (it.it as ShapeItem[]) ?? [];
       const { box, contours } = itemsBBox(children);
@@ -246,6 +262,14 @@ export function flattenParts(parts: readonly Part[]): Part[] {
   return parts.flatMap((p) => [p, ...flattenParts(p.children)]);
 }
 
+/** The other single shapes listed in the same group as shape `id` (see `groupParts`). */
+export function shapeSiblings(anim: LottieAnimation, id: string): string[] {
+  const parent = id.slice(0, id.lastIndexOf('/'));
+  return flattenParts(listParts(anim))
+    .filter((p) => p.kind === 'path' && p.id !== id && p.id.slice(0, p.id.lastIndexOf('/')) === parent)
+    .map((p) => p.id);
+}
+
 // ---------------------------------------------------------------------------
 // Resolving and editing
 // ---------------------------------------------------------------------------
@@ -284,6 +308,19 @@ function resolve(anim: LottieAnimation, id: string): Target | null {
     if (g < groupPath.length - 1) items = (groupItem.it as ShapeItem[]) ?? [];
   }
   return groupItem ? { type: 'group', list: items, index: gIndex, group: groupItem } : null;
+}
+
+/** A single shape (path, ellipse…) inside a group or shape layer, for hiding it on its own. */
+function resolveShape(anim: LottieAnimation, id: string): { list: ShapeItem[]; index: number; item: ShapeItem } | null {
+  const cut = id.lastIndexOf('/');
+  if (cut < 0) return null;
+  const parent = id.slice(0, cut);
+  const index = Number(id.slice(cut + 2));
+  const container = resolve(anim, parent);
+  if (!container) return null;
+  const list = (container.type === 'group' ? container.group.it : container.layer.shapes) as ShapeItem[] | undefined;
+  const item = list?.[index];
+  return list && item && GEOMETRY.has(item.ty) ? { list, index, item } : null;
 }
 
 const LAYER_CONTENT_KEYS = ['shapes', 'refId', 't', 'w', 'h', 'sw', 'sh', 'sc', 'tm', 'tt', 'td', 'hasMask', 'masksProperties', 'ef'];
@@ -476,6 +513,7 @@ export function applyPartEdits(anim: LottieAnimation, edits: PartEdits, content?
   // Resolve everything first: wrapping a group for a move changes the paths below it.
   const hidden = [...new Set(edits.hidden)].filter((id) => id !== edits.replace);
   const hiddenTargets = hidden.map((id) => resolve(copy, id));
+  const hiddenShapes = hidden.map((id, i) => (hiddenTargets[i] ? null : resolveShape(copy, id)));
   const moveTargets = plans.map(({ id, plan }) => ({ target: resolve(copy, id), plan }));
   const replaceTarget = edits.replace && content ? resolve(copy, edits.replace) : null;
 
@@ -503,6 +541,7 @@ export function applyPartEdits(anim: LottieAnimation, edits: PartEdits, content?
     if (target.type === 'layer') toNull(target.list, target.index);
     else (target.group as Json).__remove = true;
   }
+  for (const shape of hiddenShapes) if (shape) (shape.item as Json).__remove = true;
   for (const { target, plan } of moveTargets) if (target) applyMove(target, plan);
 
   const sweep = (items: ShapeItem[]): ShapeItem[] =>
@@ -546,8 +585,10 @@ function pathTransforms(anim: LottieAnimation, id: string): Array<{ list?: AnyLa
     out.push({ list, layer });
   }
   let items = (layer?.shapes ?? []) as ShapeItem[];
-  for (const seg of groupPath) {
+  for (const [n, seg] of groupPath.entries()) {
     const g = items[Number(seg.slice(1))];
+    // A single shape at the end: it moves with the groups above it.
+    if (g && n === groupPath.length - 1 && GEOMETRY.has(g.ty)) break;
     if (!g || g.ty !== 'gr') return null;
     items = (g.it as ShapeItem[]) ?? [];
     out.push({ tr: items.find((it) => it.ty === 'tr') as Json | undefined });
@@ -576,8 +617,13 @@ export function partBounds(anim: LottieAnimation, id: string, t?: number): BBox 
   const contours: Contour[] = [];
   if (groupPath.length) {
     let items = (layer.shapes ?? []) as ShapeItem[];
-    for (const seg of groupPath) {
+    for (const [n, seg] of groupPath.entries()) {
       const g = items[Number(seg.slice(1))];
+      if (g && n === groupPath.length - 1 && GEOMETRY.has(g.ty)) {
+        // A single shape: only its own outline, under the transforms of its groups.
+        items = [g];
+        break;
+      }
       if (!g || g.ty !== 'gr') return null;
       items = (g.it as ShapeItem[]) ?? [];
       m = multiply(m, transformMatrix(items.find((it) => it.ty === 'tr') as Json | undefined, t));

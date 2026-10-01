@@ -155,6 +155,7 @@ p {
 }
 
 .lang-switch button {
+  min-height: 32px;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
@@ -268,10 +269,51 @@ p {
     padding: 10px 10px 8px;
     gap: 8px;
   }
+  .area-preview {
+    /* Canvas height: full at the top of the page, compact once the panel is scrolled (more room to work). */
+    --stage-h: clamp(170px, 30svh, 340px);
+  }
+  .app.is-scrolled .area-preview {
+    --stage-h: clamp(112px, 17svh, 180px);
+  }
+  .area-preview .preview-card {
+    position: relative;
+  }
   .area-preview .preview-stage {
     aspect-ratio: auto;
-    height: clamp(170px, 30svh, 340px);
+    height: var(--stage-h);
     max-height: none;
+    transition: height 0.28s var(--ease-out, ease);
+  }
+  /* "Grabbed …" and "Reset position" sit on the canvas instead of taking a row of their own. */
+  .area-preview .canvas-tools {
+    position: absolute;
+    z-index: 4;
+    left: 18px;
+    right: 18px;
+    top: calc(10px + var(--stage-h) - 44px);
+    margin: 0;
+    pointer-events: none;
+    transition: top 0.28s var(--ease-out, ease);
+  }
+  .area-preview .canvas-tools > * {
+    pointer-events: auto;
+  }
+  .area-preview .canvas-tools .grab-chip,
+  .area-preview .canvas-tools .pill-btn {
+    min-height: 34px;
+    box-shadow: var(--shadow-sm);
+  }
+  .area-preview .canvas-tools .grab-chip {
+    max-width: 62%;
+    background: color-mix(in srgb, var(--card) 92%, transparent);
+  }
+  .bottom-bar {
+    padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+  }
+  .bottom-bar .primary-btn {
+    min-height: 50px;
+    font-size: 16px;
   }
   .area-preview .chat-preview,
   .area-preview .preview-bar,
@@ -1126,6 +1168,21 @@ div.note p + p {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* Long labels wrap inside the button instead of widening narrow screens. */
+.row-actions .pill-btn {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.grab-release::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
 }
 
 /* ---------- Colors card ---------- */
@@ -1424,6 +1481,9 @@ div.note p + p {
 .tile {
   position: relative;
   aspect-ratio: 1 / 1;
+  /* Tiles far off screen are not laid out or painted at all (big packs). */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 110px;
   border-radius: 28px;
   background: var(--sub-2);
   border: 3px solid transparent;
@@ -1444,6 +1504,8 @@ div.note p + p {
 .tile-anim {
   position: absolute;
   inset: 6%;
+  /* The poster turns into a player on hover: clicks must land on the tile, not on what is swapped. */
+  pointer-events: none;
 }
 
 .tile-name {
@@ -1881,12 +1943,20 @@ div.note p + p {
 }
 
 .part-expand {
+  position: relative;
   display: grid;
   place-items: center;
   width: 20px;
   height: 20px;
   flex: none;
   color: var(--muted);
+}
+
+/* A finger-sized hit area around the small arrow (the row keeps its spacing). */
+button.part-expand::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
 
 .part-expand .is-collapsed {
@@ -2083,6 +2153,7 @@ div.note p + p {
 }
 
 .grab-release {
+  position: relative;
   display: grid;
   place-items: center;
   width: 24px;
@@ -3087,13 +3158,15 @@ div.note p + p {
   position: absolute;
   inset: 22%;
   border-radius: 50%;
-  background: linear-gradient(100deg, var(--sub-2) 30%, var(--card) 50%, var(--sub-2) 70%) 0 0 / 300% 100%;
-  animation: skeleton 1.3s ease-in-out infinite;
+  background: var(--card);
+  /* Opacity only: the compositor runs it without repainting (dozens of tiles may be waiting at once). */
+  animation: skeleton 1.3s ease-in-out infinite alternate;
+  will-change: opacity;
 }
 
 @keyframes skeleton {
-  from { background-position: 100% 0; }
-  to { background-position: 0 0; }
+  from { opacity: 0.35; }
+  to { opacity: 0.9; }
 }
 
 /* ───────────────────────── Motion ─────────────────────────
@@ -3963,10 +4036,10 @@ div.note p + p {
 }
 
 .layer-paint {
-  /* Name above the colours, buttons on the right — fits a phone with any number of stops. */
+  /* Name on its own line, colours below with the buttons on their right — fits a phone with any number of stops. */
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: 'label tools' 'swatches tools';
+  grid-template-areas: 'label label' 'swatches tools';
   align-items: center;
   gap: 4px 10px;
   min-width: 0;
@@ -4000,6 +4073,7 @@ div.note p + p {
 
 .layer-paint-tools {
   grid-area: tools;
+  justify-self: end;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -4029,4 +4103,52 @@ div.note p + p {
 
 .tile-import[aria-busy='true'] {
   cursor: progress;
+}
+
+/* Posters (still pictures) in tiles and layer rows */
+img.tile-anim {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  animation: fade-in 0.25s ease;
+}
+
+img.part-thumb-anim {
+  display: block;
+  object-fit: contain;
+}
+
+/* Narrow phones: give layer names room (smaller thumbnail and buttons, names on up to two lines). */
+@media (max-width: 400px) {
+  .part-row {
+    gap: 4px;
+    padding-right: 6px;
+    padding-left: calc(4px + var(--depth, 0) * 12px);
+  }
+  .part-row .part-thumb {
+    width: 36px;
+    height: 36px;
+  }
+  .part-row .icon-btn.is-small {
+    width: 34px;
+    height: 34px;
+  }
+  .part-main {
+    gap: 8px;
+  }
+  .part-name strong {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.2;
+    font-size: 13px;
+    word-break: break-word;
+  }
+}
+
+.part-grip.is-static {
+  cursor: default;
 }

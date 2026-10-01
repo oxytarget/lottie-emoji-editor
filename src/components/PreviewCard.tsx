@@ -127,13 +127,23 @@ export function ImportedPanel({ id }: { id: string }) {
 /** Current frame of the preview, outside React state: only the player re-renders on every frame. */
 function createFrameBus() {
   let value = { frame: 0, total: 0 };
+  let last = 0;
+  let pending = 0;
   const listeners = new Set<() => void>();
+  const notify = () => {
+    pending = 0;
+    last = performance.now();
+    listeners.forEach((l) => l());
+  };
   return {
     get: () => value,
+    // ~15 updates a second are plenty for a timeline and a clock (React re-rendered the player on every frame).
     set: (frame: number, total: number) => {
       if (frame === value.frame && total === value.total) return;
       value = { frame, total };
-      listeners.forEach((l) => l());
+      const wait = 66 - (performance.now() - last);
+      if (wait <= 0) notify();
+      else if (!pending) pending = window.setTimeout(notify, wait);
     },
     subscribe: (l: () => void) => {
       listeners.add(l);

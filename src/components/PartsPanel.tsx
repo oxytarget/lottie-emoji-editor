@@ -12,7 +12,8 @@ import { applyLayerOp, DragGhost, FavLogoStrip, useLayerDnd, type DragSource } f
 import { checkOp, INSERTED, parentOf, rootOf, type Drop } from '../lottie/layout';
 import { MotionButton, Slider } from './controls';
 import { LayerPaints } from './LayerPaints';
-import { LottieView, useInView } from './LottieView';
+import { useInView } from './LottieView';
+import { usePoster } from '../state/posters';
 
 const KIND_KEYS: Record<PartKind, I18nKey> = {
   shape: 'partShape',
@@ -22,13 +23,14 @@ const KIND_KEYS: Record<PartKind, I18nKey> = {
   text: 'partText',
   solid: 'partSolid',
   group: 'partGroup',
+  path: 'partPath',
   other: 'partOther',
 };
 
 /** `a` is an ancestor of `b` in the part tree. */
 const isAncestor = (a: string, b: string) => b.startsWith(`${a}/`) || b.startsWith(`${a}>`);
 
-/** Static preview of one part on its own (computed only once the row scrolls into view). */
+/** Still picture of one part on its own (drawn once the row scrolls into view; a picture, not a player). */
 function PartThumb({ anim, id }: { anim: LottieAnimation; id: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref);
@@ -38,9 +40,10 @@ function PartThumb({ anim, id }: { anim: LottieAnimation; id: string }) {
   }, [inView]);
   const json = useMemo(() => (seen ? JSON.stringify(isolatePart(anim, id, true)) : null), [seen, anim, id]);
   const frame = useMemo(() => partFrame(anim, id), [anim, id]);
+  const poster = usePoster(json, { frame }, 96, inView);
   return (
     <div ref={ref} className="part-thumb" aria-hidden>
-      {json && <LottieView json={json} playing={false} frame={frame} className="part-thumb-anim" />}
+      {poster && <img className="part-thumb-anim" src={poster} alt="" draggable={false} />}
     </div>
   );
 }
@@ -144,6 +147,25 @@ function LayerMoves({ imp, part, flat }: { imp: ImportedTemplate; part: Part; fl
 /** Sliders for a grabbed part — the same move/size/rotation as dragging it on the canvas. */
 function PartControls({ imp, part, anim, flat }: { imp: ImportedTemplate; part: Part; anim: LottieAnimation; flat: readonly Part[] }) {
   const t = useT();
+  // A single shape: it can only be shown or hidden; its colours are those of its group.
+  if (part.kind === 'path') {
+    // Its group, or the nearest listed part above it (a lone group is shown as its layer).
+    let group: Part | undefined;
+    for (let id = parentOf(part.id).parent; id && !group; id = parentOf(id).parent) group = flat.find((p) => p.id === id);
+    const others = flat.filter((p) => p.kind === 'path' && p.id !== part.id && parentOf(p.id).parent === parentOf(part.id).parent);
+    const only = !imp.hidden.includes(part.id) && others.every((p) => imp.hidden.includes(p.id));
+    return (
+      <li className="part-controls" style={{ '--depth': 0 } as React.CSSProperties}>
+        <p className="hint">{t('partPathHint')}</p>
+        <div className="row-actions">
+          <button type="button" className="pill-btn is-compact" aria-pressed={only} onClick={() => editImport(imp.id, { kind: 'onlyShape', part: part.id, only: !only })}>
+            {only ? <EyeIcon width={16} height={16} /> : <EyeOffIcon width={16} height={16} />} {t(only ? 'pathAll' : 'pathOnly')}
+          </button>
+        </div>
+        {group ? <LayerPaints imp={imp} part={group} anim={anim} /> : null}
+      </li>
+    );
+  }
   const xf = imp.transforms[part.id] ?? NO_XF;
   const set = (patch: Partial<PartXf>) => editImport(imp.id, { kind: 'transform', part: part.id, xf: { ...xf, ...patch } });
   const reset = () => editImport(imp.id, { kind: 'transform', part: part.id, xf: null });
@@ -220,9 +242,14 @@ function PartRow(props: RowProps) {
         data-part={part.id}
         data-drop={dropState(part.id)}
       >
-        <span className="part-grip" title={t('layerDrag')} aria-hidden onPointerDown={(e) => startDrag({ kind: 'part', part }, e)}>
-          <GripIcon width={16} height={16} />
-        </span>
+        {part.kind === 'path' ? (
+          // Shapes stay in their group (out of it they would lose its fill).
+          <span className="part-grip is-static" aria-hidden />
+        ) : (
+          <span className="part-grip" title={t('layerDrag')} aria-hidden onPointerDown={(e) => startDrag({ kind: 'part', part }, e)}>
+            <GripIcon width={16} height={16} />
+          </span>
+        )}
         {part.children.length ? (
           <button type="button" className="part-expand" aria-expanded={open} aria-label={part.name} onClick={() => toggleExpanded(part.id)}>
             <ChevronIcon width={16} height={16} className={open ? '' : 'is-collapsed'} />

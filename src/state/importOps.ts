@@ -3,7 +3,7 @@ import type { ItemPaint } from '../lottie/itemPaints';
 import { resolveItem } from '../lottie/itemPaints';
 import { parentOf } from '../lottie/layout';
 import { matchColors, matchPart } from '../lottie/packs';
-import { isIdentityXf, type PartXf } from '../lottie/parts';
+import { isIdentityXf, shapeSiblings, type PartXf } from '../lottie/parts';
 import type { ImportedTemplate } from './store';
 
 /**
@@ -15,6 +15,8 @@ export type ImportOp =
   | { kind: 'colorsReset' }
   | { kind: 'overlay'; value: boolean }
   | { kind: 'hide'; part: string; hidden: boolean }
+  /** Only this shape of its group stays (`only`), or all of them again — a logo of many contours in one go. */
+  | { kind: 'onlyShape'; part: string; only: boolean }
   | { kind: 'replace'; part: string | null }
   | { kind: 'transform'; part: string; xf: PartXf | null }
   /** Colour/gradient of one fill or stroke of a layer (null = back to the file's). */
@@ -38,6 +40,12 @@ export function applyImportOp(t: ImportedTemplate, op: ImportOp): Patch {
     case 'hide': {
       const hidden = op.hidden ? [...new Set([...t.hidden, op.part])] : t.hidden.filter((h) => h !== op.part);
       return { hidden, replace: op.hidden && t.replace === op.part ? null : t.replace };
+    }
+    case 'onlyShape': {
+      const others = shapeSiblings(t.data, op.part);
+      const group = [op.part, ...others];
+      const rest = t.hidden.filter((h) => !group.includes(h));
+      return { hidden: op.only ? [...rest, ...others] : rest };
     }
     case 'replace':
       if (!op.part) return { replace: null };
@@ -81,6 +89,7 @@ export function importOpFor(source: ImportedTemplate, target: ImportedTemplate, 
       return part ? { ...op, part } : null;
     }
     case 'hide':
+    case 'onlyShape':
     case 'transform': {
       const part = mapPart(source, target, op.part);
       return part ? { ...op, part } : null;
