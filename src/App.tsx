@@ -4,7 +4,7 @@ import { ContentCard } from './components/ContentCard';
 import { ExportSheet } from './components/ExportSheet';
 import { MotionButton } from './components/controls';
 import { Segmented } from './components/controls';
-import { DownloadIcon, GridIcon, LayersIcon, PaletteIcon, ResetIcon, TypeIcon } from './components/icons';
+import { DownloadIcon, GridIcon, LayersIcon, MoonIcon, PaletteIcon, ResetIcon, SunIcon, TypeIcon } from './components/icons';
 import { Bump, usePresence, useSlidingIndicator } from './components/motion';
 import { FavColorBar, PaintBanner } from './components/FavColors';
 import { ImportedPanel, PreviewCard } from './components/PreviewCard';
@@ -12,6 +12,7 @@ import { TemplateGrid } from './components/TemplateGrid';
 import type { I18nKey } from './i18n';
 import { fetchBotPacks, packsAvailable } from './lib/botApi';
 import { confirmAction, haptic, useBackButton, useMainButton } from './lib/telegram';
+import { THEME_COLORS, useApplyTheme, useSystemTheme } from './lib/theme';
 import { openPack } from './state/packs';
 import { useEditor } from './state/store';
 import { useUi, type Tab } from './state/ui';
@@ -147,6 +148,18 @@ export default function App() {
   usePackBootstrap();
   const lang = useEditor((s) => s.lang);
   const set = useEditor((s) => s.set);
+  const chosenTheme = useEditor((s) => s.theme);
+  const systemTheme = useSystemTheme();
+  const theme = chosenTheme ?? systemTheme;
+  useApplyTheme(theme);
+  const toggleTheme = () => set('theme', theme === 'dark' ? 'light' : 'dark');
+  // The canvas follows the theme when it showed the old theme's background (the transparent one stays).
+  const shownTheme = useRef(theme);
+  useEffect(() => {
+    const before = shownTheme.current;
+    shownTheme.current = theme;
+    if (before !== theme && useEditor.getState().previewBg === before) set('previewBg', theme);
+  }, [theme, set]);
   const reset = useEditor((s) => s.reset);
   const selected = useEditor((s) => s.selected);
   const active = useEditor((s) => s.active);
@@ -170,6 +183,7 @@ export default function App() {
     text: `${t('download')} (${selectedEmojis.length})`,
     visible: !sheet.mounted,
     enabled: selectedEmojis.length > 0,
+    color: THEME_COLORS[theme].accent,
     onClick: () => setExportOpen(true),
   });
   useBackButton(exportOpen, closeExport);
@@ -206,6 +220,23 @@ export default function App() {
               </button>
             ))}
           </div>
+          {/* Phones: one button that goes through the languages (the switch does not fit next to the name). */}
+          <button
+            type="button"
+            className="icon-btn is-round is-ghost lang-cycle"
+            aria-label={`${t('langNext')}: ${lang.toUpperCase()}`}
+            title={t('langNext')}
+            onClick={() => set('lang', LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length])}
+          >
+            {lang.toUpperCase()}
+          </button>
+          <MotionButton
+            motion="spin"
+            className="icon-btn is-round is-ghost theme-btn"
+            label={t(theme === 'dark' ? 'themeLight' : 'themeDark')}
+            icon={theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+            onClick={toggleTheme}
+          />
           <MotionButton
             motion="spin-back"
             className="icon-btn is-round is-ghost"

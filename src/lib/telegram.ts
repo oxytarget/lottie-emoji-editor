@@ -70,8 +70,10 @@ export function initTelegram(): Promise<void> {
       app?.ready();
       app?.expand();
       if (app) {
-        applyTelegramTheme(app);
-        app.onEvent?.('themeChanged', () => applyTelegramTheme(app));
+        document.documentElement.dataset.tg = app.colorScheme ?? 'dark';
+        // The theme hook (lib/theme.ts) listens: Telegram's colour scheme is the default theme.
+        window.dispatchEvent(new Event(TG_THEME_EVENT));
+        app.onEvent?.('themeChanged', () => window.dispatchEvent(new Event(TG_THEME_EVENT)));
         // Dragging on the canvas must not pull the Mini App down.
         try {
           app.disableVerticalSwipes?.();
@@ -86,20 +88,17 @@ export function initTelegram(): Promise<void> {
   });
 }
 
-/** The studio's colours (see `--bg` and `--accent` in styles.css). */
-const STUDIO_BG = '#0a0a0f';
-const STUDIO_ACCENT = '#6d8cff';
+/** Fired when Telegram is ready or its colour scheme changes. */
+export const TG_THEME_EVENT = 'tg-theme';
 
-/**
- * The editor keeps its own dark studio look inside Telegram too; Telegram's header, background and bottom
- * bar take the same colour, so it reads as one surface in light and dark Telegram themes alike.
- */
-function applyTelegramTheme(app: TelegramWebApp): void {
-  document.documentElement.dataset.tg = app.colorScheme ?? 'dark';
+/** Telegram's header, background and bottom bar in the page's own colour, so they read as one surface. */
+export function setTelegramChrome(color: string): void {
+  const app = webApp();
+  if (!app) return;
   try {
-    app.setHeaderColor?.(STUDIO_BG);
-    app.setBackgroundColor?.(STUDIO_BG);
-    app.setBottomBarColor?.(STUDIO_BG);
+    app.setHeaderColor?.(color);
+    app.setBackgroundColor?.(color);
+    app.setBottomBarColor?.(color);
   } catch {
     /* older clients */
   }
@@ -109,7 +108,7 @@ function applyTelegramTheme(app: TelegramWebApp): void {
  * Telegram's own bottom button (where available) for the main action. Returns true when it is used,
  * so the page can hide its own button.
  */
-export function useMainButton(opts: { text: string; visible: boolean; enabled: boolean; onClick: () => void }): boolean {
+export function useMainButton(opts: { text: string; visible: boolean; enabled: boolean; color: string; onClick: () => void }): boolean {
   const button = webApp()?.MainButton;
   const handler = useRef(opts.onClick);
   handler.current = opts.onClick;
@@ -123,8 +122,8 @@ export function useMainButton(opts: { text: string; visible: boolean; enabled: b
     };
   }, [button]);
   useEffect(() => {
-    button?.setParams({ text: opts.text, is_visible: opts.visible, is_active: opts.enabled, color: STUDIO_ACCENT, text_color: '#ffffff', has_shine_effect: true });
-  }, [button, opts.text, opts.visible, opts.enabled]);
+    button?.setParams({ text: opts.text, is_visible: opts.visible, is_active: opts.enabled, color: opts.color, text_color: '#ffffff', has_shine_effect: true });
+  }, [button, opts.text, opts.visible, opts.enabled, opts.color]);
   return !!button;
 }
 

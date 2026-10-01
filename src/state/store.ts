@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { DEFAULT_FONT_ID } from '../content/fonts';
 import { detectLang } from '../i18n';
+import { pageTheme, type Theme } from '../lib/theme';
 import type { Paint } from '../lottie/paint';
 import { extractPalette } from '../lottie/imported';
 import { applyLayoutOp, checkOp, CONTENT_SLOT, remapEdits, remapId, type Drop, type LayoutOp } from '../lottie/layout';
@@ -79,6 +80,8 @@ export interface SavedPack {
 
 export interface EditorData {
   lang: Lang;
+  /** Light or dark studio theme; null follows the system (or Telegram) until the user picks one. */
+  theme: Theme | null;
   mode: 'text' | 'logo';
   text: string;
   fontId: string;
@@ -171,6 +174,7 @@ const defaultPreset = PRESETS[1];
 
 export const initialData = (): EditorData => ({
   lang: detectLang(),
+  theme: null,
   mode: 'text',
   text: 'EMOJI',
   fontId: DEFAULT_FONT_ID,
@@ -193,7 +197,8 @@ export const initialData = (): EditorData => ({
   stretch: 1,
   selected: ['classic'],
   active: 'classic',
-  previewBg: 'dark',
+  // The canvas in the page's theme to begin with.
+  previewBg: pageTheme(),
   imports: [],
   packs: [],
   myPacks: [],
@@ -430,21 +435,21 @@ export const useEditor = create<EditorData & EditorActions>()(
       // Packs live in Telegram and Favourites are the user's library, so a reset keeps them
       // (pack stickers stay loaded, with their edits reset).
       reset: () => {
-        const { lang, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
+        const { lang, theme, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
         const stickers = imports
           .filter((t) => t.source)
           .map((t) => ({ ...t, data: t.base, layout: [], colorMap: {}, transforms: {}, ...(t.defaults ?? { hidden: [], replace: null, overlay: false }) }));
-        set({ ...initialData(), lang, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
+        set({ ...initialData(), lang, theme, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
       },
     }),
     {
       name: 'emoji-studio',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
-      // v2: the dark studio theme — the canvas goes dark with it (it can still be switched back).
+      // v3: light and dark studio themes — a plain canvas takes the page's theme once (it can be switched back).
       migrate: (persisted, version) => {
         const data = (persisted ?? {}) as Partial<EditorData>;
-        if (version < 2 && data.previewBg === 'light') data.previewBg = 'dark';
+        if (version < 3 && (data.previewBg === 'light' || data.previewBg === 'dark')) data.previewBg = pageTheme();
         return data as EditorData & EditorActions;
       },
       partialize: (s) => {

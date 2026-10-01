@@ -12,7 +12,23 @@
   --accent-strong: #a3b4ff;
   --accent-soft: #1a1f3a;
   --accent-line: #34407c;
+  --accent-fill: #5574f2;
   --on-accent: #ffffff;
+  --card-top: #16161c;
+  --raised: #17171e;
+  --tile-top: #1d1d26;
+  --tile-sel-top: #20243d;
+  --checker-a: #20202a;
+  --checker-b: #282833;
+  --chat-bg: linear-gradient(160deg, #1d2c3b 0%, #0e1621 100%);
+  --chat-line: #1f2d3c;
+  --bubble: #182533;
+  --bubble-text: #f5f7fa;
+  --glow-1: rgba(109, 40, 217, 0.2);
+  --glow-2: rgba(88, 28, 135, 0.26);
+  --glow-3: rgba(30, 64, 175, 0.14);
+  --planet: rgba(77, 92, 170, 0.3);
+  --scrollbar: #2c2c38;
   --brand-grad: linear-gradient(135deg, #a855f7 0%, #6a7ff6 50%, #22c9bd 100%);
   --brand-grad-x: linear-gradient(90deg, #8b5cf6 0%, #5f86f6 55%, #1fc4bb 100%);
   --glow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 22px -6px color-mix(in srgb, var(--accent) 75%, transparent);
@@ -34,6 +50,43 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The bright theme: the same studio palette on light surfaces (soft lilac and teal glows). */
+:root[data-theme='light'] {
+  --bg: #f3f4fa;
+  --card: #ffffff;
+  --sub: #f4f5fa;
+  --sub-2: #e8eaf4;
+  --line: #e2e5f0;
+  --text: #13141d;
+  --muted: #666b84;
+  --accent: #4462ec;
+  --accent-strong: #3f55d1;
+  --accent-soft: #eef1ff;
+  --accent-line: #c7d0ff;
+  --accent-fill: #4462ec;
+  --danger: #e5484d;
+  --warn: #b45309;
+  --ok: #15803d;
+  --shadow: 0 18px 40px -26px rgba(40, 50, 120, 0.35);
+  --shadow-sm: 0 6px 16px -10px rgba(40, 50, 120, 0.3);
+  --card-top: #ffffff;
+  --raised: #ffffff;
+  --tile-top: #ffffff;
+  --tile-sel-top: #eef1ff;
+  --checker-a: #e7e9f2;
+  --checker-b: #fbfbfe;
+  --chat-bg: linear-gradient(135deg, #c9dfb5, #a7c894);
+  --chat-line: transparent;
+  --bubble: #ffffff;
+  --bubble-text: #111111;
+  --glow-1: rgba(139, 92, 246, 0.16);
+  --glow-2: rgba(56, 189, 248, 0.12);
+  --glow-3: rgba(34, 201, 189, 0.1);
+  --planet: rgba(99, 110, 210, 0.16);
+  --scrollbar: #cfd3e3;
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -51,22 +104,22 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(70% 50% at 0% 0%, rgba(109, 40, 217, 0.2), transparent 70%),
-    radial-gradient(55% 45% at 100% 45%, rgba(88, 28, 135, 0.26), transparent 72%),
-    radial-gradient(60% 40% at 30% 100%, rgba(30, 64, 175, 0.14), transparent 70%);
+    radial-gradient(70% 50% at 0% 0%, var(--glow-1), transparent 70%),
+    radial-gradient(55% 45% at 100% 45%, var(--glow-2), transparent 72%),
+    radial-gradient(60% 40% at 30% 100%, var(--glow-3), transparent 70%);
 }
 
 /* Dim planets in the margins (wide screens only: on a phone there is no margin for them). */
 @media (min-width: 1240px) {
   body::before {
     background:
-      radial-gradient(circle at 2% 58%, rgba(77, 92, 170, 0.32) 0 7px, transparent 8px),
-      radial-gradient(circle at 98% 26%, rgba(77, 92, 170, 0.26) 0 12px, transparent 13px),
-      radial-gradient(circle at 97% 84%, rgba(77, 92, 170, 0.2) 0 6px, transparent 7px),
-      radial-gradient(circle at 2.5% 14%, rgba(77, 92, 170, 0.18) 0 4px, transparent 5px),
-      radial-gradient(70% 50% at 0% 0%, rgba(109, 40, 217, 0.2), transparent 70%),
-      radial-gradient(55% 45% at 100% 45%, rgba(88, 28, 135, 0.26), transparent 72%),
-      radial-gradient(60% 40% at 30% 100%, rgba(30, 64, 175, 0.14), transparent 70%);
+      radial-gradient(circle at 2% 58%, var(--planet) 0 7px, transparent 8px),
+      radial-gradient(circle at 98% 26%, var(--planet) 0 12px, transparent 13px),
+      radial-gradient(circle at 97% 84%, var(--planet) 0 6px, transparent 7px),
+      radial-gradient(circle at 2.5% 14%, var(--planet) 0 4px, transparent 5px),
+      radial-gradient(70% 50% at 0% 0%, var(--glow-1), transparent 70%),
+      radial-gradient(55% 45% at 100% 45%, var(--glow-2), transparent 72%),
+      radial-gradient(60% 40% at 30% 100%, var(--glow-3), transparent 70%);
   }
 }
 
@@ -76,7 +129,7 @@ body::before {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2c2c38 transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 
 button,
@@ -215,8 +268,30 @@ p {
   color: var(--on-accent, #fff);
 }
 
+/* One button that goes through the languages: phones only (see below). */
+.topbar .lang-cycle {
+  display: none;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+@media (max-width: 440px) {
+  .lang-switch {
+    display: none;
+  }
+  .topbar .lang-cycle {
+    display: inline-grid;
+  }
+}
+
+.topbar .theme-btn {
+  color: var(--accent);
+}
+
 .lang-switch .slide-pill {
-  background: var(--accent);
+  background: var(--accent-fill);
   border-radius: 999px;
 }
 
@@ -475,7 +550,7 @@ p {
 /* ---------- Cards ---------- */
 
 .card {
-  background: linear-gradient(180deg, #16161c 0%, var(--card) 140px);
+  background: linear-gradient(180deg, var(--card-top) 0%, var(--card) 140px);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   padding: 20px;
@@ -736,6 +811,7 @@ div.note p + p {
 
 .primary-btn:disabled {
   background: var(--sub-2);
+  color: var(--muted);
   box-shadow: none;
   text-shadow: none;
 }
@@ -912,7 +988,7 @@ div.note p + p {
   width: 250px;
   padding: 14px;
   border-radius: var(--radius-md);
-  background: #17171e;
+  background: var(--raised);
   border: 1px solid var(--accent-line);
   box-shadow: 0 24px 50px -16px rgba(0, 0, 0, 0.9), 0 0 30px -14px var(--accent);
   display: grid;
@@ -1244,7 +1320,7 @@ div.note p + p {
   flex: none;
   border-radius: 18px;
   padding: 8px;
-  background: repeating-conic-gradient(#20202a 0 25%, #282833 0 50%) 0 0 / 16px 16px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px;
   display: grid;
   place-items: center;
 }
@@ -1441,7 +1517,7 @@ div.note p + p {
 }
 
 .bg-chess .preview-stage {
-  background: repeating-conic-gradient(#191920 0 25%, #202029 0 50%) 0 0 / 28px 28px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 28px 28px;
 }
 
 .preview-anim {
@@ -1509,7 +1585,7 @@ div.note p + p {
 }
 
 .bg-dot.bg-chess {
-  background: repeating-conic-gradient(#22222c 0 25%, #30303c 0 50%) 0 0 / 10px 10px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 10px 10px;
 }
 
 .chat-preview {
@@ -1519,9 +1595,9 @@ div.note p + p {
   gap: 12px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
-  /* Telegram's night chat. */
-  background: linear-gradient(160deg, #1d2c3b 0%, #0e1621 100%);
-  border: 1px solid #1f2d3c;
+  /* Telegram's chat in the same theme (night chat in the dark one). */
+  background: var(--chat-bg);
+  border: 1px solid var(--chat-line);
 }
 
 .chat-bubble {
@@ -1530,8 +1606,8 @@ div.note p + p {
   gap: 4px;
   padding: 8px 12px;
   border-radius: 16px 16px 16px 4px;
-  background: #182533;
-  color: #f5f7fa;
+  background: var(--bubble);
+  color: var(--bubble-text);
   font-weight: 700;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
 }
@@ -1594,7 +1670,7 @@ div.note p + p {
   content-visibility: auto;
   contain-intrinsic-size: auto 110px;
   border-radius: 28px;
-  background: radial-gradient(120% 100% at 50% 0%, #1d1d26 0%, var(--sub) 75%);
+  background: radial-gradient(120% 100% at 50% 0%, var(--tile-top) 0%, var(--sub) 75%);
   border: 2px solid var(--line);
   overflow: hidden;
   transition: transform 0.12s ease, border-color 0.15s, background 0.15s;
@@ -1602,7 +1678,7 @@ div.note p + p {
 
 .tile.is-selected {
   border-color: var(--accent-line);
-  background: radial-gradient(120% 100% at 50% 0%, #20243d 0%, var(--card) 75%);
+  background: radial-gradient(120% 100% at 50% 0%, var(--tile-sel-top) 0%, var(--card) 75%);
 }
 
 .tile.is-active {
@@ -1716,7 +1792,7 @@ div.note p + p {
   gap: 14px;
   padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
   border-radius: 28px 28px 0 0;
-  background: linear-gradient(180deg, #17171e 0%, var(--card) 160px);
+  background: linear-gradient(180deg, var(--raised) 0%, var(--card) 160px);
   border: 1px solid var(--line);
   border-bottom: 0;
   box-shadow: 0 -20px 60px -30px rgba(109, 140, 255, 0.35);
@@ -2082,7 +2158,7 @@ button.part-expand::after {
   height: 44px;
   flex: none;
   border-radius: 10px;
-  background: repeating-conic-gradient(#20202a 0 25%, #282833 0 50%) 0 0 / 12px 12px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px;
   overflow: hidden;
 }
 
