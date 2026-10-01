@@ -193,7 +193,7 @@ export const initialData = (): EditorData => ({
   stretch: 1,
   selected: ['classic'],
   active: 'classic',
-  previewBg: 'light',
+  previewBg: 'dark',
   imports: [],
   packs: [],
   myPacks: [],
@@ -439,8 +439,14 @@ export const useEditor = create<EditorData & EditorActions>()(
     }),
     {
       name: 'emoji-studio',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
+      // v2: the dark studio theme — the canvas goes dark with it (it can still be switched back).
+      migrate: (persisted, version) => {
+        const data = (persisted ?? {}) as Partial<EditorData>;
+        if (version < 2 && data.previewBg === 'light') data.previewBg = 'dark';
+        return data as EditorData & EditorActions;
+      },
       partialize: (s) => {
         const { imports: _imports, ...data } = s;
         const keep: Partial<EditorData> = {};

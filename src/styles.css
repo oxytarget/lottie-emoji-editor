@@ -1,25 +1,31 @@
 :root {
-  --bg: #f4f5fa;
-  --card: #ffffff;
-  --sub: #f3f4f8;
-  --sub-2: #eceef5;
-  --line: #e4e7f0;
-  --text: #15162a;
-  --muted: #8a91a6;
-  --accent: #8b5cf6;
-  --accent-strong: #7c3aed;
-  --accent-soft: #f1ecff;
-  --accent-line: #ddd0ff;
-  --danger: #e5484d;
-  --warn: #b45309;
-  --ok: #16a34a;
-  --shadow: 0 14px 34px -22px rgba(52, 35, 120, 0.45);
-  --shadow-sm: 0 4px 14px -8px rgba(52, 35, 120, 0.35);
+  /* One dark theme in the studio's colours: near-black, deep purple glows, periwinkle accent and the
+     purple → blue → teal brand gradient. */
+  --bg: #0a0a0f;
+  --card: #131318;
+  --sub: #19191f;
+  --sub-2: #202028;
+  --line: #262630;
+  --text: #f2f3f8;
+  --muted: #8a8ea5;
+  --accent: #6d8cff;
+  --accent-strong: #a3b4ff;
+  --accent-soft: #1a1f3a;
+  --accent-line: #34407c;
+  --on-accent: #ffffff;
+  --brand-grad: linear-gradient(135deg, #a855f7 0%, #6a7ff6 50%, #22c9bd 100%);
+  --brand-grad-x: linear-gradient(90deg, #8b5cf6 0%, #5f86f6 55%, #1fc4bb 100%);
+  --glow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 22px -6px color-mix(in srgb, var(--accent) 75%, transparent);
+  --danger: #ff5c6c;
+  --warn: #f5a524;
+  --ok: #34d399;
+  --shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.95);
+  --shadow-sm: 0 6px 18px -10px rgba(0, 0, 0, 0.9);
   --chat-dark: #17212b;
   --radius-xl: 32px;
   --radius-lg: 24px;
   --radius-md: 18px;
-  color-scheme: light;
+  color-scheme: dark;
   /* The platform's own font, like Telegram itself uses (the emoji fonts are separate). */
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', Roboto, 'Segoe UI', 'Helvetica Neue', sans-serif;
   color: var(--text);
@@ -28,34 +34,49 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1017;
-    --card: #181a24;
-    --sub: #20222e;
-    --sub-2: #272a38;
-    --line: #2c2f3e;
-    --text: #eef0f8;
-    --muted: #8d93aa;
-    --accent: #9b72ff;
-    --accent-strong: #b194ff;
-    --accent-soft: #261f42;
-    --accent-line: #3d3268;
-    --warn: #f5a524;
-    --shadow: 0 14px 34px -22px rgba(0, 0, 0, 0.8);
-    --shadow-sm: 0 4px 14px -8px rgba(0, 0, 0, 0.7);
-    color-scheme: dark;
-  }
-}
-
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  background: var(--bg);
   min-height: 100vh;
+}
+
+/* Deep purple glows and a few dim planets behind everything (fixed: nothing to repaint while scrolling). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 50% at 0% 0%, rgba(109, 40, 217, 0.2), transparent 70%),
+    radial-gradient(55% 45% at 100% 45%, rgba(88, 28, 135, 0.26), transparent 72%),
+    radial-gradient(60% 40% at 30% 100%, rgba(30, 64, 175, 0.14), transparent 70%);
+}
+
+/* Dim planets in the margins (wide screens only: on a phone there is no margin for them). */
+@media (min-width: 1240px) {
+  body::before {
+    background:
+      radial-gradient(circle at 2% 58%, rgba(77, 92, 170, 0.32) 0 7px, transparent 8px),
+      radial-gradient(circle at 98% 26%, rgba(77, 92, 170, 0.26) 0 12px, transparent 13px),
+      radial-gradient(circle at 97% 84%, rgba(77, 92, 170, 0.2) 0 6px, transparent 7px),
+      radial-gradient(circle at 2.5% 14%, rgba(77, 92, 170, 0.18) 0 4px, transparent 5px),
+      radial-gradient(70% 50% at 0% 0%, rgba(109, 40, 217, 0.2), transparent 70%),
+      radial-gradient(55% 45% at 100% 45%, rgba(88, 28, 135, 0.26), transparent 72%),
+      radial-gradient(60% 40% at 30% 100%, rgba(30, 64, 175, 0.14), transparent 70%);
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2c2c38 transparent;
 }
 
 button,
@@ -78,7 +99,7 @@ button:disabled {
 }
 
 :focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -106,7 +127,12 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 2px 14px;
+  margin: 14px 0 16px;
+  padding: 8px 8px 8px 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .brand {
@@ -118,23 +144,39 @@ p {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #a78bfa, #7c3aed);
-  color: #fff;
-  font-size: 22px;
-  box-shadow: var(--shadow-sm);
+  width: 40px;
+  height: 40px;
+  flex: none;
+  filter: drop-shadow(0 0 14px rgba(106, 127, 246, 0.45));
+}
+
+.brand-mark svg {
+  width: 100%;
+  height: 100%;
 }
 
 .brand h1 {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: -0.02em;
+  font-family: 'Orbitron', system-ui, sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.brand-cursor {
+  margin-left: 2px;
+  color: var(--muted);
+  animation: cursor-blink 1.1s steps(1) infinite;
+}
+
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 .brand p {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
   font-weight: 700;
 }
@@ -148,10 +190,10 @@ p {
 .lang-switch {
   position: relative;
   display: flex;
-  background: var(--card);
+  background: var(--sub);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 4px;
-  box-shadow: var(--shadow-sm);
+  padding: 3px;
 }
 
 .lang-switch button {
@@ -226,6 +268,14 @@ p {
 
 .tabbar .segmented {
   display: flex;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border: 1px solid var(--line);
+}
+
+.tabbar .segmented button,
+.tabbar .segmented .slide-pill {
+  border-radius: 999px;
 }
 
 .tabbar .segmented button {
@@ -248,7 +298,7 @@ p {
   min-width: 20px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--brand-grad);
   color: var(--on-accent, #fff);
   font-size: 11px;
   font-weight: 900;
@@ -334,19 +384,53 @@ p {
 
 @media (max-width: 600px) {
   .topbar {
-    padding: 10px 0 8px;
+    margin: 10px 0 12px;
+    padding: 6px 6px 6px 12px;
+    gap: 8px;
+  }
+  .brand {
+    gap: 8px;
+    min-width: 0;
+  }
+  .brand > div {
+    min-width: 0;
   }
   .brand-mark {
-    width: 36px;
-    height: 36px;
-    font-size: 18px;
-    border-radius: 12px;
+    width: 30px;
+    height: 30px;
   }
   .brand h1 {
-    font-size: 19px;
+    font-size: 15px;
+    letter-spacing: 0;
+    overflow: hidden;
+    text-overflow: clip;
   }
   .brand p {
     display: none;
+  }
+  .topbar-actions {
+    gap: 6px;
+  }
+  .lang-switch button {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  .topbar .icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+@media (max-width: 370px) {
+  .brand h1 {
+    font-size: 13px;
+  }
+  .brand-mark {
+    width: 26px;
+    height: 26px;
+  }
+  .lang-switch button {
+    padding: 6px 6px;
   }
 }
 
@@ -391,10 +475,11 @@ p {
 /* ---------- Cards ---------- */
 
 .card {
-  background: var(--card);
+  background: linear-gradient(180deg, #16161c 0%, var(--card) 140px);
+  border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   padding: 20px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.035);
   display: grid;
   gap: 14px;
 }
@@ -427,6 +512,11 @@ p {
   display: block;
   font-style: normal;
   color: var(--accent);
+}
+
+/* Card headings: periwinkle, like the kicker labels of the studio's site. */
+.section-title {
+  color: var(--accent-strong);
 }
 
 .hint {
@@ -547,8 +637,8 @@ div.note p + p {
 }
 
 .segmented .slide-pill {
-  background: var(--card);
-  box-shadow: var(--shadow-sm);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-line), 0 0 18px -8px var(--accent);
   border-radius: 14px;
 }
 
@@ -559,10 +649,10 @@ div.note p + p {
   height: 44px;
   flex: none;
   border-radius: 14px;
-  background: var(--card);
+  background: var(--sub);
   border: 1px solid var(--line);
   color: var(--text);
-  transition: transform 0.12s ease;
+  transition: transform 0.12s ease, border-color 0.2s, box-shadow 0.2s;
 }
 
 .icon-btn:active,
@@ -589,9 +679,8 @@ div.note p + p {
 }
 
 .icon-btn.is-ghost {
-  background: var(--card);
-  box-shadow: var(--shadow-sm);
-  border: 0;
+  background: var(--sub);
+  border: 1px solid var(--line);
 }
 
 .pill-btn {
@@ -600,8 +689,9 @@ div.note p + p {
   gap: 8px;
   min-height: 44px;
   padding: 0 16px;
-  border-radius: var(--radius-md);
-  background: var(--sub-2);
+  border-radius: 999px;
+  background: var(--sub);
+  border: 1px solid var(--line);
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -633,14 +723,21 @@ div.note p + p {
   gap: 10px;
   width: 100%;
   min-height: 58px;
-  border-radius: 20px;
-  background: var(--accent);
+  border-radius: 999px;
+  background: var(--brand-grad-x);
   color: var(--on-accent, #fff);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 900;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  box-shadow: 0 16px 30px -16px rgba(124, 58, 237, 0.9);
+  text-shadow: 0 1px 2px rgba(10, 10, 30, 0.35);
+  box-shadow: 0 14px 34px -14px rgba(95, 134, 246, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.primary-btn:disabled {
+  background: var(--sub-2);
+  box-shadow: none;
+  text-shadow: none;
 }
 
 .toggle {
@@ -684,8 +781,9 @@ div.note p + p {
 }
 
 .toggle input:checked + .toggle-track {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--brand-grad-x);
+  border-color: transparent;
+  box-shadow: 0 0 16px -6px var(--accent);
 }
 
 .toggle input:checked + .toggle-track::after {
@@ -726,13 +824,17 @@ div.note p + p {
 .slider input[type='range']::-webkit-slider-runnable-track {
   height: 12px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent-line) var(--pct), var(--sub-2) var(--pct));
+  background:
+    linear-gradient(90deg, #7c5cf6, var(--accent)) 0 0 / max(var(--pct), 1px) 100% no-repeat,
+    var(--sub-2);
 }
 
 .slider input[type='range']::-moz-range-track {
   height: 12px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent-line) var(--pct), var(--sub-2) var(--pct));
+  background:
+    linear-gradient(90deg, #7c5cf6, var(--accent)) 0 0 / max(var(--pct), 1px) 100% no-repeat,
+    var(--sub-2);
 }
 
 .slider input[type='range']::-webkit-slider-thumb {
@@ -743,7 +845,7 @@ div.note p + p {
   border-radius: 50%;
   background: #fff;
   border: 6px solid var(--accent);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-sm);
 }
 
 .slider input[type='range']::-moz-range-thumb {
@@ -810,9 +912,9 @@ div.note p + p {
   width: 250px;
   padding: 14px;
   border-radius: var(--radius-md);
-  background: var(--card);
-  border: 1px solid var(--line);
-  box-shadow: 0 24px 50px -20px rgba(20, 10, 60, 0.45);
+  background: #17171e;
+  border: 1px solid var(--accent-line);
+  box-shadow: 0 24px 50px -16px rgba(0, 0, 0, 0.9), 0 0 30px -14px var(--accent);
   display: grid;
   gap: 12px;
 }
@@ -919,6 +1021,7 @@ div.note p + p {
 
 .text-field textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent), 0 0 28px -10px var(--accent);
 }
 
 .font-picker {
@@ -1141,7 +1244,7 @@ div.note p + p {
   flex: none;
   border-radius: 18px;
   padding: 8px;
-  background: repeating-conic-gradient(#e5e7ef 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+  background: repeating-conic-gradient(#20202a 0 25%, #282833 0 50%) 0 0 / 16px 16px;
   display: grid;
   place-items: center;
 }
@@ -1191,9 +1294,12 @@ div.note p + p {
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding: 2px 2px 6px;
-  margin: 0 -4px;
+  /* Edges fade out, so the row reads as scrollable; the padding lets the first and last presets clear the fade. */
+  padding: 2px 18px 6px;
+  margin: 0 -18px;
   scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 28px), transparent);
 }
 
 .preset-row::-webkit-scrollbar {
@@ -1326,15 +1432,16 @@ div.note p + p {
 }
 
 .bg-light .preview-stage {
-  background: #f3f4f8;
+  background: #eef0f6;
 }
 
 .bg-dark .preview-stage {
-  background: var(--chat-dark);
+  background: radial-gradient(120% 90% at 50% 0%, #1b1c2a 0%, #101016 70%);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .bg-chess .preview-stage {
-  background: repeating-conic-gradient(#e3e5ee 0 25%, #fbfbfd 0 50%) 0 0 / 28px 28px;
+  background: repeating-conic-gradient(#191920 0 25%, #202029 0 50%) 0 0 / 28px 28px;
 }
 
 .preview-anim {
@@ -1398,11 +1505,11 @@ div.note p + p {
 }
 
 .bg-dot.bg-dark {
-  background: var(--chat-dark);
+  background: #101016;
 }
 
 .bg-dot.bg-chess {
-  background: repeating-conic-gradient(#d9dce6 0 25%, #fff 0 50%) 0 0 / 10px 10px;
+  background: repeating-conic-gradient(#22222c 0 25%, #30303c 0 50%) 0 0 / 10px 10px;
 }
 
 .chat-preview {
@@ -1412,7 +1519,9 @@ div.note p + p {
   gap: 12px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #c9dfb5, #a7c894);
+  /* Telegram's night chat. */
+  background: linear-gradient(160deg, #1d2c3b 0%, #0e1621 100%);
+  border: 1px solid #1f2d3c;
 }
 
 .chat-bubble {
@@ -1421,10 +1530,10 @@ div.note p + p {
   gap: 4px;
   padding: 8px 12px;
   border-radius: 16px 16px 16px 4px;
-  background: #fff;
-  color: #111;
+  background: #182533;
+  color: #f5f7fa;
   font-weight: 700;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
 }
 
 .chat-emoji {
@@ -1485,20 +1594,20 @@ div.note p + p {
   content-visibility: auto;
   contain-intrinsic-size: auto 110px;
   border-radius: 28px;
-  background: var(--sub-2);
-  border: 3px solid transparent;
+  background: radial-gradient(120% 100% at 50% 0%, #1d1d26 0%, var(--sub) 75%);
+  border: 2px solid var(--line);
   overflow: hidden;
   transition: transform 0.12s ease, border-color 0.15s, background 0.15s;
 }
 
 .tile.is-selected {
   border-color: var(--accent-line);
-  background: var(--card);
-  box-shadow: var(--shadow);
+  background: radial-gradient(120% 100% at 50% 0%, #20243d 0%, var(--card) 75%);
 }
 
 .tile.is-active {
   border-color: var(--accent);
+  box-shadow: 0 0 24px -8px var(--accent);
 }
 
 .tile-anim {
@@ -1543,7 +1652,7 @@ div.note p + p {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--brand-grad);
   color: var(--on-accent, #fff);
 }
 
@@ -1570,8 +1679,9 @@ div.note p + p {
   bottom: 0;
   z-index: 30;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 70%, transparent), color-mix(in srgb, var(--bg) 94%, transparent));
   backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--line);
 }
 
@@ -1588,8 +1698,8 @@ div.note p + p {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(10, 8, 30, 0.45);
-  backdrop-filter: blur(2px);
+  background: rgba(4, 4, 10, 0.62);
+  backdrop-filter: blur(3px);
   animation: fade-in 0.22s ease both;
 }
 
@@ -1606,7 +1716,10 @@ div.note p + p {
   gap: 14px;
   padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
   border-radius: 28px 28px 0 0;
-  background: var(--card);
+  background: linear-gradient(180deg, #17171e 0%, var(--card) 160px);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  box-shadow: 0 -20px 60px -30px rgba(109, 140, 255, 0.35);
   animation: sheet-up 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.04) both;
 }
 
@@ -1836,7 +1949,7 @@ div.note p + p {
   padding: 0 14px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: var(--card);
+  background: var(--sub);
   font-weight: 800;
   font-size: 16px;
   color: var(--text);
@@ -1859,6 +1972,7 @@ div.note p + p {
 .field select:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .secondary-btn {
@@ -1968,7 +2082,7 @@ button.part-expand::after {
   height: 44px;
   flex: none;
   border-radius: 10px;
-  background: repeating-conic-gradient(#e3e5ee 0 25%, #fbfbfd 0 50%) 0 0 / 12px 12px;
+  background: repeating-conic-gradient(#20202a 0 25%, #282833 0 50%) 0 0 / 12px 12px;
   overflow: hidden;
 }
 
@@ -3330,14 +3444,21 @@ button.part-expand::after {
   .icon-btn:not(:disabled):hover,
   .pill-btn:not(:disabled):hover {
     transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
+    border-color: var(--accent-line);
+    box-shadow: 0 0 18px -8px var(--accent);
+  }
+  .tile:not(.is-active):hover {
+    border-color: var(--accent-line);
+  }
+  .primary-btn:not(:disabled):hover {
+    filter: brightness(1.08) saturate(1.05);
   }
   .preset:hover {
     transform: translateY(-1px);
   }
   .primary-btn:not(:disabled):hover {
     transform: translateY(-2px);
-    box-shadow: 0 20px 36px -16px rgba(124, 58, 237, 0.95);
+    box-shadow: 0 18px 40px -14px rgba(95, 134, 246, 0.95), inset 0 1px 0 rgba(255, 255, 255, 0.22);
   }
   .primary-btn:not(:disabled):hover::after {
     animation: shine 0.9s var(--ease-out);

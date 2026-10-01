@@ -86,41 +86,20 @@ export function initTelegram(): Promise<void> {
   });
 }
 
-const HEX = /^#[0-9a-f]{6}$/i;
+/** The studio's colours (see `--bg` and `--accent` in styles.css). */
+const STUDIO_BG = '#0a0a0f';
+const STUDIO_ACCENT = '#6d8cff';
 
-/** Uses the user's Telegram theme, so the editor looks like part of Telegram in light and dark mode. */
+/**
+ * The editor keeps its own dark studio look inside Telegram too; Telegram's header, background and bottom
+ * bar take the same colour, so it reads as one surface in light and dark Telegram themes alike.
+ */
 function applyTelegramTheme(app: TelegramWebApp): void {
-  const p = app.themeParams ?? {};
-  if (!p.bg_color || !p.text_color) return;
-  const root = document.documentElement;
-  const card = p.section_bg_color ?? p.bg_color;
-  const bg = p.secondary_bg_color ?? p.bg_color;
-  const text = p.text_color;
-  const accent = p.button_color ?? p.accent_text_color ?? '#2481cc';
-  const vars: Record<string, string | undefined> = {
-    '--bg': bg,
-    '--card': card,
-    '--text': text,
-    '--muted': p.hint_color,
-    '--accent': accent,
-    '--accent-strong': p.accent_text_color ?? accent,
-    '--on-accent': p.button_text_color,
-    '--accent-soft': `color-mix(in srgb, ${accent} 14%, ${card})`,
-    '--accent-line': `color-mix(in srgb, ${accent} 35%, ${card})`,
-    '--sub': `color-mix(in srgb, ${text} 5%, ${card})`,
-    '--sub-2': `color-mix(in srgb, ${text} 9%, ${card})`,
-    '--line': `color-mix(in srgb, ${text} 12%, ${card})`,
-    '--danger': p.destructive_text_color,
-  };
-  for (const [k, v] of Object.entries(vars)) if (v) root.style.setProperty(k, v);
-  root.style.colorScheme = app.colorScheme ?? '';
-  root.dataset.tg = app.colorScheme ?? 'light';
+  document.documentElement.dataset.tg = app.colorScheme ?? 'dark';
   try {
-    if (HEX.test(bg)) {
-      app.setHeaderColor?.(bg);
-      app.setBackgroundColor?.(bg);
-      app.setBottomBarColor?.(bg);
-    }
+    app.setHeaderColor?.(STUDIO_BG);
+    app.setBackgroundColor?.(STUDIO_BG);
+    app.setBottomBarColor?.(STUDIO_BG);
   } catch {
     /* older clients */
   }
@@ -144,7 +123,7 @@ export function useMainButton(opts: { text: string; visible: boolean; enabled: b
     };
   }, [button]);
   useEffect(() => {
-    button?.setParams({ text: opts.text, is_visible: opts.visible, is_active: opts.enabled });
+    button?.setParams({ text: opts.text, is_visible: opts.visible, is_active: opts.enabled, color: STUDIO_ACCENT, text_color: '#ffffff', has_shine_effect: true });
   }, [button, opts.text, opts.visible, opts.enabled]);
   return !!button;
 }
