@@ -209,7 +209,66 @@ describe('platform entry points', () => {
   });
 
   it('Cloudflare entry delegates to the shared handler', async () => {
+    mockTelegram((method) => (method === 'getMe' ? { ok: true, result: { id: 123456, username: 'Emoji_test_bot' } } : { ok: true, result: true }));
     const res = await cfWorker.fetch(new Request('https://worker.test/'), env);
-    expect(await res.json()).toEqual({ ok: true, service: 'emoji-studio-bot', bot: 123456 });
+    expect(await res.json()).toEqual({ ok: true, service: 'emoji-studio-bot', bot: 123456, username: 'Emoji_test_bot' });
+  });
+});
+
+describe('link codes (the editor in a browser)', async () => {
+  const { linkCode, validateLinkCode } = await import('../../worker/src/telegram');
+
+  it('signs the user and the expiry; foreign, tampered and old codes fail', async () => {
+    const code = await linkCode(424242, 'ru', TOKEN);
+    expect(code).toMatch(/^r[0-9a-z]+-[0-9a-z]+-[A-Za-z0-9_-]{16}$/);
+    expect(await validateLinkCode(code, TOKEN)).toMatchObject({ ok: true, user: { id: 424242, language_code: 'ru' } });
+    expect(await validateLinkCode(code, '999:other')).toMatchObject({ ok: false, reason: 'bad-hash' });
+    expect((await validateLinkCode(code.replace(/^r[0-9a-z]+/, `r${(1).toString(36)}`), TOKEN)).ok).toBe(false);
+    const old = await linkCode(424242, 'ru', TOKEN, Date.now() - 200 * 86_400_000);
+    expect(await validateLinkCode(old, TOKEN)).toMatchObject({ ok: false, reason: 'expired' });
+    expect(await validateLinkCode('nonsense', TOKEN)).toMatchObject({ ok: false });
+  });
+
+  it('makes codes the editor recognises in the bot message', async () => {
+    const { parseLinkCode } = await import('../lib/botLink');
+    for (const [id, lang] of [[1, 'uk'], [7_999_999_999, 'en'], [424242, 'ru']] as const) {
+      const code = await linkCode(id, lang, TOKEN);
+      expect(parseLinkCode(`Код для редактора:\n\n${code}\n\nКод діє 90 днів.`)).toBe(code);
+      expect(parseLinkCode(`https://example.github.io/app/#tglink=${code}`)).toBe(code);
+    }
+  });
+
+  it('answers /start link with the code and a button back to the editor', async () => {
+    const calls = mockTelegram();
+    await handle(
+      new Request('https://worker.test/api/telegram', {
+        method: 'POST',
+        body: JSON.stringify({ message: { chat: { id: 7, type: 'private' }, text: '/start link', from: { id: 77, language_code: 'uk' } } }),
+        headers: { 'x-telegram-bot-api-secret-token': await webhookSecret(TOKEN) },
+      }),
+      env,
+    );
+    const body = calls[0].body as { text: string; parse_mode: string; reply_markup: { inline_keyboard: Array<Array<{ url?: string; copy_text?: { text: string } }>> } };
+    const code = body.reply_markup.inline_keyboard[1][0].copy_text!.text;
+    expect(body.text).toContain(`<code>${code}</code>`);
+    expect(body.reply_markup.inline_keyboard[0][0].url).toBe(`${env.APP_URL}#tglink=${code}`);
+    expect(await validateLinkCode(code, TOKEN)).toMatchObject({ ok: true, user: { id: 77 } });
+  });
+
+  it('lets the browser send files with the code instead of initData', async () => {
+    const calls = mockTelegram();
+    const form = new FormData();
+    form.set('link', await linkCode(55, 'en', TOKEN));
+    form.append('files', tgs('a.tgs'));
+    const res = await handle(sendRequest(form), env);
+    expect(res.status).toBe(200);
+    expect(calls[0].method).toBe('sendDocument');
+    expect((calls[0].body as FormData).get('chat_id')).toBe('55');
+    const bad = new FormData();
+    bad.set('link', 'e1-zz-AAAAAAAAAAAAAAAA');
+    bad.append('files', tgs('a.tgs'));
+    expect((await handle(sendRequest(bad), env)).status).toBe(401);
+    const check = await handle(new Request(`https://worker.test/api/link?code=${encodeURIComponent(await linkCode(55, 'en', TOKEN))}`), env);
+    expect(await check.json()).toEqual({ ok: true });
   });
 });

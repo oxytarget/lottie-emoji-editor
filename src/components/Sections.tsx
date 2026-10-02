@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import type { I18nKey } from '../i18n';
-import { confirmAction, haptic, openTelegramLink, telegramUser } from '../lib/telegram';
+import { packsAvailable } from '../lib/botApi';
+import { useLinkedCode } from '../lib/botLink';
+import { confirmAction, haptic, isTelegram, openTelegramLink, telegramUser } from '../lib/telegram';
 import type { Theme } from '../lib/theme';
 import { posterDataUrl } from '../state/posters';
 import { useEditor } from '../state/store';
@@ -9,6 +11,7 @@ import { useT } from '../state/useT';
 import type { Lang } from '../templates/types';
 import { Toggle } from './controls';
 import { DraftIcon, GlobeIcon, GridIcon, MoonIcon, PenIcon, ResetIcon, SaveIcon, StickersIcon, SunIcon, TrashIcon, UserIcon } from './icons';
+import { TelegramLinkCard, unlink } from './TelegramLink';
 import { PackForm } from './TemplateGrid';
 
 const LANGS: Lang[] = ['uk', 'ru', 'en'];
@@ -279,6 +282,9 @@ export function ProfilePage({ theme, onTheme }: { theme: Theme; onTheme: () => v
   const packs = useEditor((s) => s.packs.length);
   const user = telegramUser();
   const name = user?.name ?? t('profileGuest');
+  // In a browser the bot creates packs once it is linked (in Telegram it always can).
+  const linked = !!useLinkedCode();
+  const canLink = packsAvailable() && !isTelegram();
   return (
     <div className="page">
       <PageHead title={t('navProfile')} sub={t('profileSub')} />
@@ -305,8 +311,20 @@ export function ProfilePage({ theme, onTheme }: { theme: Theme; onTheme: () => v
           <div className="setting-row">
             <Toggle label={t('profileAutoBrand')} checked={auto} onChange={(v) => set('autoBrand', v)} />
           </div>
+          {canLink && linked && (
+            <div className="setting-row">
+              <span className="label">{t('linkRow')}</span>
+              <span className="link-status">
+                <span className="is-ok">{t('linkOn')}</span>
+                <button type="button" className="chip-btn" onClick={unlink}>
+                  {t('linkOff')}
+                </button>
+              </span>
+            </div>
+          )}
         </div>
       </section>
+      {canLink && !linked && <TelegramLinkCard />}
       <section className="card">
         <h3 className="card-kicker">{t('profileEditor')}</h3>
         <button type="button" className="pill-btn is-danger" onClick={async () => (await confirmAction(t('resetConfirm'))) && reset()}>

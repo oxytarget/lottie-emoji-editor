@@ -1,10 +1,10 @@
 /**
  * POST /api/pack — the bot creates a custom emoji pack owned by the user (or adds to one it created earlier).
  *
- * Form fields: initData, title, set (optional existing pack name), files[] (.tgs) and emojis[] (one per file).
+ * Form fields: initData (or link — a link code), title, set (optional existing pack name), files[] (.tgs) and emojis[] (one per file).
  */
 import { json, json as jsonResponse, telegram, TelegramError, type Env } from './shared.js';
-import { packTexts, pickLang, validateInitData } from './telegram.js';
+import { authenticate, packTexts, pickLang } from './telegram.js';
 import { toEmojiCanvas } from './tgs.js';
 
 const MAX_FILES = 50; // createNewStickerSet accepts up to 50 initial stickers
@@ -19,7 +19,7 @@ const NAME_TAKEN_ERROR = /already occupied|STICKERSET_NAME_OCCUPIED/i;
 
 const botCache = new Map<string, Promise<{ id: number; username: string }>>();
 
-function botInfo(env: Env): Promise<{ id: number; username: string }> {
+export function botInfo(env: Env): Promise<{ id: number; username: string }> {
   let p = botCache.get(env.TELEGRAM_BOT_TOKEN);
   if (!p) {
     p = telegram(env, 'getMe', {}) as Promise<{ id: number; username: string }>;
@@ -117,7 +117,7 @@ export async function handlePack(req: Request, env: Env, cors: Record<string, st
     return json({ ok: false, error: 'bad-request' }, 400, cors);
   }
 
-  const auth = await validateInitData(String(form.get('initData') ?? ''), env.TELEGRAM_BOT_TOKEN);
+  const auth = await authenticate(form, env.TELEGRAM_BOT_TOKEN);
   if (!auth.ok) return json({ ok: false, error: 'unauthorized', reason: auth.reason }, 401, cors);
 
   const files = form.getAll('files').filter((f): f is File => typeof f !== 'string');

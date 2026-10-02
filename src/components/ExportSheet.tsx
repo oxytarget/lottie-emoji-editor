@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { I18nKey } from '../i18n';
-import { canUseBot, CREATE_BATCH, createPackAll, createPacksSplit, sendAllToChat, type BotError, type JobProgress, type PackResult } from '../lib/botApi';
+import { canUseBot, CREATE_BATCH, createPackAll, createPacksSplit, packsAvailable, sendAllToChat, usesLink, type BotError, type JobProgress, type PackResult } from '../lib/botApi';
+import { useLinkedCode } from '../lib/botLink';
 import { closeApp, haptic, isTelegram, openExternal, openTelegramLink } from '../lib/telegram';
 import { downloadBlob, formatKb, slug, tgsFromJson, zipFiles, type TgsCheck } from '../lottie/export';
 import { useEditor } from '../state/store';
@@ -9,6 +10,7 @@ import { useT } from '../state/useT';
 import { MotionButton, Segmented, Toggle } from './controls';
 import { CheckIcon, CloseIcon, DownloadIcon, SendIcon, StickersIcon, WarningIcon } from './icons';
 import { LottieView } from './LottieView';
+import { openBotChat, TelegramLinkCard, TelegramLinkStatus } from './TelegramLink';
 import { emojiName } from './TemplateGrid';
 
 const PROBLEM_KEYS: Record<TgsCheck['problems'][number], I18nKey> = {
@@ -71,8 +73,12 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
   const packJob = useEditor((s) => s.packJob);
   const setStore = useEditor((s) => s.set);
   const [split, setSplit] = useState(false);
-  // Inside Telegram the bot creates packs and sends files; in a browser the files are downloaded.
+  // Inside Telegram the bot creates packs and sends files. In a browser too once it is linked to the bot (a code
+  // from the bot); until then the files are downloaded, and the sheet offers to link.
+  useLinkedCode();
   const viaBot = canUseBot();
+  const linked = viaBot && usesLink();
+  const canLink = !viaBot && packsAvailable() && !isTelegram();
 
   const defaultTitle = (mode === 'logo' ? logo?.name.replace(/\.svg$/i, '') : text.split('\n')[0])?.trim().slice(0, 64) || 'Emoji Studio';
   const [title, setTitle] = useState(defaultTitle);
@@ -211,6 +217,8 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
           <MotionButton motion="spin" className="icon-btn is-round" label={t('close')} icon={<CloseIcon />} onClick={onClose} />
         </div>
 
+        {canLink && emojis.length > 0 && <TelegramLinkCard expired={result.kind === 'error' && result.error === 'unauthorized'} />}
+
         {!viaBot && (
           <Segmented
             value={format}
@@ -225,6 +233,7 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
         {viaBot && emojis.length > 0 && (
           <div className="pack-form">
             <h3 className="section-title">{t('packSection')}</h3>
+            {linked && <TelegramLinkStatus />}
             <label className="field">
               <span className="label">{t('packTarget')}</span>
               <select value={target} onChange={(e) => setTarget(e.target.value)}>
@@ -346,7 +355,7 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
               <div className="send-done" role="status">
                 <CheckIcon width={18} height={18} strokeWidth={3} />
                 <span>{t('sentToChat')}</span>
-                <button type="button" className="pill-btn is-compact" onClick={closeApp}>
+                <button type="button" className="pill-btn is-compact" onClick={linked ? openBotChat : closeApp}>
                   {t('goToChat')}
                 </button>
               </div>
@@ -379,7 +388,8 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
         )}
 
         {emojis.length > 0 && !viaBot && (
-          <button type="button" className="primary-btn" onClick={downloadAll}>
+          // With the bot offered above, downloading is the second choice.
+          <button type="button" className={canLink ? 'secondary-btn' : 'primary-btn'} onClick={downloadAll}>
             <DownloadIcon /> {emojis.length > 1 ? `${t('exportZip')} (${emojis.length})` : `${t('download')} .${format}`}
           </button>
         )}

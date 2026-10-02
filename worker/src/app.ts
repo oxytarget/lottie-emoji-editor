@@ -5,14 +5,15 @@
  *   POST /api/pack       — the bot creates a custom emoji pack for the user (or adds to one it made before).
  *   POST /api/telegram   — bot webhook: /start, and sticker packs sent to the bot (→ editor templates).
  *   GET  /api/stickerset, /api/sticker, /api/templates — sticker packs as templates (see templates.ts).
+ *   GET  /api/link       — checks a link code (the editor in a browser acts for a user — see linkCode).
  *   GET  /               — health check.
  *
  * Settings: TELEGRAM_BOT_TOKEN (secret), APP_URL, ALLOWED_ORIGINS (comma separated), ADMIN_IDS (optional,
  * Telegram ids allowed to add template packs for everyone), TELEGRAM_API (optional, for tests).
  */
 import { corsHeaders, json, telegram, TelegramError, type Env } from './shared.js';
-import { handlePack } from './packs.js';
-import { pickLang, TEXTS, validateInitData, webhookSecret } from './telegram.js';
+import { authenticate, LINK_DAYS, linkCode, pickLang, TEXTS, validateLinkCode, webhookSecret } from './telegram.js';
+import { botInfo, handlePack } from './packs.js';
 import {
   handleSticker,
   handleStickerSet,
@@ -70,7 +71,7 @@ async function handleSend(req: Request, env: Env, cors: Record<string, string>):
     return json({ ok: false, error: 'bad-request' }, 400, cors);
   }
 
-  const auth = await validateInitData(String(form.get('initData') ?? ''), env.TELEGRAM_BOT_TOKEN);
+  const auth = await authenticate(form, env.TELEGRAM_BOT_TOKEN);
   if (!auth.ok) return json({ ok: false, error: 'unauthorized', reason: auth.reason }, 401, cors);
 
   const files = form.getAll('files').filter((f): f is File => typeof f !== 'string');
@@ -107,6 +108,20 @@ interface Update {
 async function onMessage(env: Env, msg: Message): Promise<void> {
   const text = msg.text?.trim() ?? '';
   const command = /^\/([a-z]+)(?:@\w+)?/i.exec(text)?.[1]?.toLowerCase();
+  if (command === 'start' && /^\/start(?:@\w+)?\s+link$/i.test(text) && msg.from) {
+    // The editor in a browser: a code that lets it act for this user (see linkCode).
+    const lang = pickLang(msg.from.language_code);
+    const t = TEXTS[lang];
+    const code = await linkCode(msg.from.id, lang, env.TELEGRAM_BOT_TOKEN);
+    const back = `${env.APP_URL.replace(/#.*$/, '')}#tglink=${code}`;
+    await telegram(env, 'sendMessage', {
+      chat_id: msg.chat.id,
+      text: t.link.replace('{code}', code).replace('{days}', String(LINK_DAYS)),
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: [[{ text: t.linkBack, url: back }], [{ text: t.linkCopy, copy_text: { text: code } }]] },
+    });
+    return;
+  }
   if (command === 'start') {
     const t = TEXTS[pickLang(msg.from?.language_code)];
     await telegram(env, 'sendMessage', {
@@ -138,6 +153,12 @@ async function handleWebhook(req: Request, env: Env): Promise<Response> {
   return new Response('ok');
 }
 
+/** GET /api/link?code= — whether a link code is good (the editor checks it before keeping it). */
+async function handleLink(url: URL, env: Env, cors: Record<string, string>): Promise<Response> {
+  const auth = await validateLinkCode(url.searchParams.get('code') ?? '', env.TELEGRAM_BOT_TOKEN);
+  return auth.ok ? json({ ok: true }, 200, cors) : json({ ok: false, error: 'unauthorized', reason: auth.reason }, 401, cors);
+}
+
 export async function handle(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const cors = corsHeaders(req, env);
@@ -150,10 +171,13 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (req.method === 'GET' && url.pathname === '/api/stickerset') return handleStickerSet(url, env);
   if (req.method === 'GET' && url.pathname === '/api/sticker') return handleSticker(url, env);
   if (req.method === 'GET' && url.pathname === '/api/templates') return handleTemplates(env);
+  if (req.method === 'GET' && url.pathname === '/api/link') return handleLink(url, env, cors);
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/health')) {
     // The numeric bot id (token prefix) is public; it lets setup scripts check the right token is configured.
     const bot = Number(env.TELEGRAM_BOT_TOKEN.split(':')[0]) || null;
-    return json({ ok: true, service: 'emoji-studio-bot', bot }, 200, cors);
+    // The username lets the editor in a browser open the bot (t.me/<username>?start=link).
+    const username = await botInfo(env).then((b) => b.username, () => null);
+    return json({ ok: true, service: 'emoji-studio-bot', bot, username }, 200, cors);
   }
   return json({ ok: false, error: 'not-found' }, 404, cors);
 }

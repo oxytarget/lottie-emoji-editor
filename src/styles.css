@@ -4863,3 +4863,62 @@ img.part-thumb-anim {
   height: 24px;
   border-radius: 50%;
 }
+
+/* Linking the editor in a browser to the bot */
+.link-card .section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+a.primary-btn {
+  text-decoration: none;
+}
+
+.link-code {
+  display: flex;
+  gap: 8px;
+}
+
+.link-code input {
+  /* No intrinsic width: the field takes what is left (phones). */
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--sub);
+  color: var(--text);
+  font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.link-code input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.link-code .pill-btn {
+  flex: none;
+  min-width: 112px;
+  justify-content: center;
+}
+
+.link-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.link-status > span:first-child {
+  flex: 1;
+}
+
+.link-status .is-ok {
+  color: var(--ok);
+}

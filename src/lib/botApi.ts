@@ -1,3 +1,4 @@
+import { linkedCode, setLinkedCode } from './botLink';
 import { initData, requestWriteAccess } from './telegram';
 
 /**
@@ -28,9 +29,19 @@ interface Progress {
 
 type Failure = { ok: false; error: BotError; detail?: string } & Progress;
 
-/** True inside the Telegram Mini App when a bot backend is configured. */
+/** True when a bot backend is configured and the user is known: the Mini App, or a browser linked to the bot. */
 export function canUseBot(): boolean {
-  return !!RAW_API_URL && !!initData();
+  return !!RAW_API_URL && (!!initData() || !!linkedCode());
+}
+
+/** The editor runs in a browser and acts with a link code from the bot. */
+export const usesLink = (): boolean => !initData() && !!linkedCode();
+
+/** Who is asking: the Mini App's signed launch data, or the browser's link code. */
+function signIn(form: FormData): void {
+  const data = initData();
+  if (data) form.set('initData', data);
+  else form.set('link', linkedCode());
 }
 
 const blobOf = (f: OutgoingFile) => new Blob([typeof f.data === 'string' ? f.data : new Uint8Array(f.data)], { type: f.type });
@@ -48,7 +59,11 @@ async function call<T>(path: string, build: () => FormData): Promise<{ ok: true;
     if (res.ok) return { ok: true, data: body };
     const progress: Progress = { added: body.added, sent: body.sent, retryAfter: body.retryAfter, name: body.name };
     const known: BotError[] = ['pack-full', 'pack-not-found', 'bad-emoji', 'flood', 'bad-files'];
-    if (res.status === 401) return { ok: false, error: 'unauthorized', ...progress };
+    if (res.status === 401) {
+      // An expired (or foreign) link code: the editor asks to link again.
+      if (usesLink()) setLinkedCode(null);
+      return { ok: false, error: 'unauthorized', ...progress };
+    }
     if (res.status === 403) return { ok: false, error: 'denied', ...progress };
     if (res.status === 413) return { ok: false, error: 'bad-files', detail: 'HTTP 413' };
     if (body.error && known.includes(body.error as BotError)) return { ok: false, error: body.error as BotError, detail: body.detail, ...progress };
@@ -62,7 +77,7 @@ async function call<T>(path: string, build: () => FormData): Promise<{ ok: true;
 export async function sendToChat(files: OutgoingFile[], last = true) {
   return call<{ sent: number }>('/api/send', () => {
     const form = new FormData();
-    form.set('initData', initData());
+    signIn(form);
     if (!last) form.set('last', '0');
     for (const f of files) form.append('files', blobOf(f), f.name);
     return form;
@@ -162,7 +177,7 @@ export async function createPack(opts: {
 }) {
   return call<PackResult>('/api/pack', () => {
     const form = new FormData();
-    form.set('initData', initData());
+    signIn(form);
     form.set('title', opts.title);
     if (opts.set) form.set('set', opts.set);
     if (opts.notify === false) form.set('notify', '0');
@@ -247,6 +262,36 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
     return { ...res, data: pack };
   }
   return pack ? { ok: true, data: pack } : { ok: false, error: 'server' };
+}
+
+// ---------------------------------------------------------------------------
+// Linking the editor in a browser to the bot
+// ---------------------------------------------------------------------------
+
+let username: Promise<string | null> | undefined;
+
+/** The bot's @username (to open it with t.me/<username>?start=link), from the backend. */
+export function botUsername(): Promise<string | null> {
+  username ??= fetch(`${BOT_API_URL}/api/health`)
+    .then((res) => res.json() as Promise<{ username?: string | null }>)
+    .then((body) => (typeof body.username === 'string' && /^\w{4,64}$/.test(body.username) ? body.username : null))
+    .catch(() => null)
+    .then((name) => {
+      if (!name) username = undefined;
+      return name;
+    });
+  return username;
+}
+
+/** Whether the backend accepts a link code (it is the bot's and has not expired). */
+export async function checkLinkCode(code: string): Promise<'ok' | 'bad' | 'network'> {
+  try {
+    const res = await fetch(`${BOT_API_URL}/api/link?code=${encodeURIComponent(code)}`);
+    if (res.ok) return 'ok';
+    return res.status === 401 ? 'bad' : 'network';
+  } catch {
+    return 'network';
+  }
 }
 
 // ---------------------------------------------------------------------------

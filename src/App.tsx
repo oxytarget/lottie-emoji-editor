@@ -12,9 +12,11 @@ import { DraftsPage, goTo, ProfilePage, SaveDraftButton, SectionNav, StudioPage 
 import { Toast, useHotkeys } from './components/Hotkeys';
 import { undo } from './state/history';
 import { translate } from './i18n';
+import { linkFromUrl } from './components/TelegramLink';
 import { TemplateGrid } from './components/TemplateGrid';
 import type { I18nKey } from './i18n';
 import { fetchBotPacks, packsAvailable } from './lib/botApi';
+import { takeLinkFromUrl } from './lib/botLink';
 import { haptic, useBackButton, useMainButton } from './lib/telegram';
 import { THEME_COLORS, useApplyTheme, useSystemTheme } from './lib/theme';
 import { openPack } from './state/packs';
@@ -109,18 +111,30 @@ function useStickyPreview(ref: React.RefObject<HTMLElement | null>, app: React.R
   }, [ref, app]);
 }
 
-/** Loads the bot's template packs and a pack passed by the bot as `?pack=<name>`. */
+/**
+ * Loads the bot's template packs and a pack passed by the bot as `?pack=<name>`; takes the link code the bot's
+ * "back to the editor" button passes as `#tglink=<code>` (this browser then creates packs through the bot).
+ */
 function usePackBootstrap() {
   useEffect(() => {
     if (!packsAvailable()) return;
+    const takeLink = () => {
+      const code = takeLinkFromUrl();
+      if (code) void linkFromUrl(code);
+    };
+    takeLink();
+    // The bot's link may also land in this already open tab.
+    window.addEventListener('hashchange', takeLink);
     fetchBotPacks().then((packs) => useUi.getState().setBotPacks(packs));
     const params = new URLSearchParams(window.location.search);
     const name = params.get('pack');
-    if (!name || !/^[A-Za-z0-9_]{1,64}$/.test(name)) return;
-    params.delete('pack');
-    const query = params.toString();
-    window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
-    openPack(name);
+    if (name && /^[A-Za-z0-9_]{1,64}$/.test(name)) {
+      params.delete('pack');
+      const query = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+      openPack(name);
+    }
+    return () => window.removeEventListener('hashchange', takeLink);
   }, []);
 }
 
