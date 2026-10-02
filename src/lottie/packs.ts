@@ -1,11 +1,13 @@
 import { hexToRgba } from './color';
-import { flattenParts, listParts, partBounds, partFrame, partGeometry, sameGeometry, type Part, type PartGeometry } from './parts';
+import { flattenParts, listParts, partBounds, partFrame, partGeometry, runGeometry, sameGeometry, shapeRuns, type Part, type PartGeometry, type ShapeRun } from './parts';
 import type { BBox, LottieAnimation } from './types';
 
 /**
  * Finds the logo/text in the stickers of a pack. Stickers made by emoji generators carry the same logo
  * (or text) in every animation while the characters differ, so parts whose outlines — normalised for position
- * and size — repeat across most of the pack are the logo. Falls back to per-sticker guesses (names, text layers).
+ * and size — repeat across most of the pack are the logo. The logo may also be a few items drawn next to the
+ * body in one layer or group (its letters as sibling groups, or paths sharing the body's fill): runs of such
+ * items are compared the same way. Falls back to per-sticker guesses (names, text layers).
  */
 
 export interface PackPick {
@@ -15,6 +17,11 @@ export interface PackPick {
   hidden: string[];
   /** Found by comparing the stickers (true) or guessed from a single sticker (false). */
   shared: boolean;
+  /**
+   * The logo is a run of items among other shapes: a slot goes in its place (`slotForRun` in layout.ts) and
+   * the run's items are in `hidden`. `replace` is then null until the slot exists.
+   */
+  run?: { container: string; items: number[] };
 }
 
 interface Candidate extends PartGeometry {
@@ -45,8 +52,68 @@ export function packCandidates(anim: LottieAnimation): Candidate[] {
 
 export type { Candidate as PackCandidate };
 
-/** `all` may be computed beforehand (sticker by sticker, so a big pack does not freeze the page). */
-export function analyzePack(anims: readonly LottieAnimation[], all: Candidate[][] = anims.map(packCandidates)): PackPick[] {
+/** Runs of items of one sticker that may be the logo (structure only; see `shapeRuns`). */
+export const packRuns = (anim: LottieAnimation): ShapeRun[] => shapeRuns(anim);
+
+const runIds = (run: Pick<ShapeRun, 'container' | 'items'>) => run.items.map((i) => `${run.container}/g${i}`);
+const isWithin = (a: string, b: string) => a === b || isAncestor(a, b);
+
+/** A run whose outlines repeat across the pack, with its sticker's box. */
+interface SharedRun extends ShapeRun, PartGeometry {
+  sig: number;
+}
+
+/**
+ * Runs whose structure repeats in enough stickers, then whose shapes match (only those get their geometry
+ * computed — a sticker has thousands of runs). Support = number of stickers per matching cluster.
+ */
+function sharedRuns(anims: readonly LottieAnimation[], runs: ShapeRun[][], threshold: number): { list: SharedRun[][]; support: Map<number, number> } {
+  const byKey = new Map<string, Set<number>>();
+  runs.forEach((list, i) => {
+    for (const r of list) {
+      let set = byKey.get(r.key);
+      if (!set) byKey.set(r.key, (set = new Set()));
+      set.add(i);
+    }
+  });
+  const clusters = new Map<string, Array<{ rep: PartGeometry; id: number }>>();
+  const seen = new Map<number, Set<number>>();
+  let nextId = 0;
+  const list = runs.map((stickerRuns, i) =>
+    stickerRuns.flatMap((r) => {
+      if ((byKey.get(r.key)?.size ?? 0) < threshold) return [];
+      const geo = runGeometry(anims[i], r);
+      if (!geo) return [];
+      const bucket = clusters.get(geo.key) ?? [];
+      clusters.set(geo.key, bucket);
+      let cluster = bucket.find((b) => sameGeometry(b.rep, geo));
+      if (!cluster) {
+        cluster = { rep: geo, id: nextId++ };
+        bucket.push(cluster);
+      }
+      if (!seen.has(cluster.id)) seen.set(cluster.id, new Set());
+      seen.get(cluster.id)!.add(i);
+      return [{ ...r, ...geo, sig: cluster.id }];
+    }),
+  );
+  return { list, support: new Map([...seen].map(([id, set]) => [id, set.size])) };
+}
+
+/** Every item of the run lies on every other one (copies of one shape), rather than side by side. */
+function isStack(anim: LottieAnimation, run: Pick<ShapeRun, 'container' | 'items'>): boolean {
+  const boxes = run.items.map((i) => partBounds(anim, `${run.container}/g${i}`, 0));
+  if (boxes.some((b) => !b)) return false;
+  return boxes.every((a, i) => boxes.every((b, j) => i === j || overlap(a!, b!) > 0.6));
+}
+
+/**
+ * `all` and `runs` may be computed beforehand (sticker by sticker, so a big pack does not freeze the page).
+ */
+export function analyzePack(
+  anims: readonly LottieAnimation[],
+  all: Candidate[][] = anims.map(packCandidates),
+  runs: ShapeRun[][] = anims.map(packRuns),
+): PackPick[] {
   // Cluster equal outlines (same structure, points within tolerance) and count the stickers of each cluster.
   const clusters = new Map<string, Array<{ rep: Candidate; id: number }>>();
   const seen = new Map<number, Set<number>>();
@@ -67,23 +134,58 @@ export function analyzePack(anims: readonly LottieAnimation[], all: Candidate[][
   });
   const n = anims.length;
   const threshold = n >= 2 ? Math.max(2, Math.ceil(n * 0.5)) : Infinity;
+  const shared = n >= 2 ? sharedRuns(anims, runs, threshold) : { list: anims.map(() => []), support: new Map<number, number>() };
 
   return anims.map((anim, i) => {
     const canvas = anim.w * anim.h;
     const boxOf = (id: string) => partBounds(anim, id, partFrame(anim, id) + anim.ip);
+    const fits = (box: BBox | null): box is BBox => !!box && area(box) > canvas * 0.0005 && area(box) < canvas * 0.6;
     // Repeated, not trivial (a plain circle or eye), not covering the whole sticker.
-    const shared = all[i]
+    const parts = all[i]
       .filter((c) => (seen.get(c.sig)?.size ?? 0) >= threshold && (c.contours >= 2 || c.segments >= 10))
       .map((c) => ({ ...c, box: boxOf(c.part.id) }))
-      .filter((c): c is typeof c & { box: BBox } => !!c.box && area(c.box) > canvas * 0.0005 && area(c.box) < canvas * 0.6);
-    const top = shared.filter((c) => !shared.some((o) => o !== c && isAncestor(o.part.id, c.part.id)));
+      .filter((c): c is typeof c & { box: BBox } => fits(c.box));
+    const runsHere = shared.list[i]
+      .filter((r) => (shared.support.get(r.sig) ?? 0) >= threshold)
+      .map((r) => ({ ...r, box: partBounds(anim, r.container, partFrame(anim, r.container) + anim.ip, r.items) }))
+      .filter((r): r is typeof r & { box: BBox } => fits(r.box))
+      // A run inside a part that repeats itself is that part's business.
+      .filter((r) => !parts.some((p) => isWithin(p.part.id, r.container)))
+      // Copies of one logo stacked up (outline, fill, shadow) are parts with copies, not a logo made of pieces.
+      .filter((r) => !isStack(anim, r));
+    // Of runs that repeat, the longest: a run inside another one (part of the logo) goes.
+    const longest = runsHere.filter(
+      (r) => !runsHere.some((o) => o !== r && (isWithin(runIds(o).find((id) => isWithin(id, r.container)) ?? '#', r.container) || (o.container === r.container && o.items.length > r.items.length && r.items.every((x) => o.items.includes(x))))),
+    );
+    // A part that is one letter of a repeating run is not the logo either.
+    const topParts = parts.filter(
+      (c) => !parts.some((o) => o !== c && isAncestor(o.part.id, c.part.id)) && !longest.some((r) => runIds(r).some((id) => isWithin(id, c.part.id))),
+    );
 
-    if (top.length) {
-      const score = (c: (typeof top)[number]) =>
-        ((seen.get(c.sig)?.size ?? 0) / n) * (c.part.detected ? 2 : 1) * Math.log(2 + c.segments) * Math.sqrt(area(c.box) / canvas);
-      const best = top.reduce((a, b) => (score(b) > score(a) ? b : a));
-      const hidden = top.filter((c) => c !== best && overlap(c.box, best.box) > 0.6).map((c) => c.part.id);
-      return { replace: best.part.id, hidden, shared: true };
+    type Pick = { kind: 'part'; id: string; box: BBox; score: number } | { kind: 'run'; run: (typeof longest)[number]; box: BBox; score: number };
+    const support = (sig: number, map: Map<number, number>) => (map.get(sig) ?? 0) / n;
+    const picks: Pick[] = [
+      ...topParts.map((c) => ({
+        kind: 'part' as const,
+        id: c.part.id,
+        box: c.box,
+        score: ((seen.get(c.sig)?.size ?? 0) / n) * (c.part.detected ? 2 : 1) * Math.log(2 + c.segments) * Math.sqrt(area(c.box) / canvas),
+      })),
+      ...longest.map((r) => ({
+        kind: 'run' as const,
+        run: r,
+        box: r.box,
+        score: support(r.sig, shared.support) * Math.log(2 + r.segments) * Math.sqrt(area(r.box) / canvas),
+      })),
+    ];
+
+    if (picks.length) {
+      const best = picks.reduce((a, b) => (b.score > a.score ? b : a));
+      // Copies of the logo at the same place (outline, shadow) go too.
+      const copies = picks.filter((p) => p !== best && overlap(p.box, best.box) > 0.6).flatMap((p) => (p.kind === 'part' ? [p.id] : runIds(p.run)));
+      if (best.kind === 'part') return { replace: best.id, hidden: copies, shared: true };
+      const run = { container: best.run.container, items: best.run.items };
+      return { replace: null, hidden: [...runIds(run), ...copies], shared: true, run };
     }
 
     const guess = flattenParts(listParts(anim)).find((p) => p.detected && p.replaceable);

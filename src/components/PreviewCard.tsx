@@ -18,7 +18,8 @@ import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
-import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
+import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, SparkleIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
+import { brandColors, brandImports, type BrandSource } from '../state/brand';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
 import { emojiName } from './TemplateGrid';
@@ -73,6 +74,79 @@ function SyncBar({ imp }: { imp: ImportedTemplate }) {
   );
 }
 
+/** Small dots of the colours a button will use. */
+function ColorDots({ colors }: { colors: readonly string[] }) {
+  return (
+    <span className="color-dots" aria-hidden>
+      {colors.map((c) => (
+        <span key={c} style={{ background: c }} />
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Pack-wide automation: where the pack's logo went (found by the analysis, replaced by the user's), and the
+ * pack recoloured into the colours of the user's logo/text or of the emoji palette, in one tap.
+ */
+function AutoBrand({ imp }: { imp: ImportedTemplate }) {
+  const t = useT();
+  const pack = imp.source?.pack;
+  const mine = (i: ImportedTemplate) => (pack ? i.source?.pack === pack : i.id === imp.id);
+  const [found, total] = useEditor((s) => {
+    let n = 0;
+    let logo = 0;
+    for (const i of s.imports) {
+      if (!mine(i)) continue;
+      n++;
+      if (i.defaults?.replace) logo++;
+    }
+    return `${logo}/${n}`;
+  }).split('/').map(Number);
+  const auto = useEditor((s) => s.autoBrand);
+  const set = useEditor((s) => s.set);
+  const logoMode = useEditor((s) => s.mode === 'logo' && !!s.logo && s.logoColors === 'original');
+  const contentKey = useEditor((s) => JSON.stringify([s.mode, s.logo?.svg.length, s.logoColors, s.textFill, s.textOutline]));
+  const paletteKey = useEditor((s) => JSON.stringify(s.colors));
+  const content = useMemo(() => brandColors('content'), [contentKey]);
+  const palette = useMemo(() => brandColors('palette'), [paletteKey]);
+  const [done, setDone] = useState<{ n: number; key: number } | null>(null);
+  const apply = (source: BrandSource | null) => {
+    const ids = useEditor.getState().imports.filter(mine).map((i) => i.id);
+    const n = brandImports(ids, source);
+    setDone({ n, key: Date.now() });
+    haptic();
+  };
+  return (
+    <section className="auto-brand">
+      <h3 className="auto-brand-title">
+        <SparkleIcon width={16} height={16} /> {t('autoBrandTitle')}
+      </h3>
+      {pack && (
+        <p className="hint">{found ? t('autoBrandLogo').replace('{n}', String(found)).replace('{total}', String(total)) : t('autoBrandNoLogo')}</p>
+      )}
+      <div className="row-actions">
+        <button type="button" className="pill-btn is-compact is-accent" disabled={!content.length} onClick={() => apply('content')}>
+          <ColorDots colors={content} /> {t(logoMode ? 'autoBrandFromLogo' : 'autoBrandFromText')}
+        </button>
+        <button type="button" className="pill-btn is-compact" disabled={!palette.length} onClick={() => apply('palette')}>
+          <ColorDots colors={palette} /> {t('autoBrandFromPalette')}
+        </button>
+        <button type="button" className="pill-btn is-compact" onClick={() => apply(null)}>
+          <ResetIcon width={16} height={16} /> {t('autoBrandOriginal')}
+        </button>
+      </div>
+      {!content.length && <p className="hint">{t('autoBrandNoColors')}</p>}
+      {done && (
+        <p key={done.key} className="sync-report" role="status">
+          <CheckIcon width={14} height={14} strokeWidth={3} /> {t('autoBrandDone').replace('{n}', String(done.n))}
+        </p>
+      )}
+      {pack && <Toggle label={t('autoBrandOnImport')} checked={auto} onChange={(v) => set('autoBrand', v)} />}
+    </section>
+  );
+}
+
 export function ImportedPanel({ id }: { id: string }) {
   const t = useT();
   const imp = useEditor((s) => s.imports.find((i) => i.id === id));
@@ -92,6 +166,7 @@ export function ImportedPanel({ id }: { id: string }) {
           <WarningIcon width={16} height={16} /> {t('importIssues').replace('{list}', issues.map((i) => t(ISSUE_KEYS[i])).join(', '))}
         </p>
       )}
+      <AutoBrand imp={imp} />
       <SyncBar imp={imp} />
       <PartsPanel key={imp.id} imp={imp} />
       <h3 className="section-title">{t('importedPalette')}</h3>

@@ -4349,3 +4349,47 @@ img.part-thumb-anim {
 .part-grip.is-static {
   cursor: default;
 }
+
+/* Pack auto-styling: where the logo went, colours in one tap */
+.auto-brand {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+}
+
+.auto-brand-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--accent-strong);
+}
+
+.auto-brand .pill-btn {
+  background: var(--card);
+}
+
+.auto-brand .pill-btn.is-accent {
+  color: var(--accent-strong);
+  border-color: var(--accent-line);
+}
+
+.color-dots {
+  display: inline-flex;
+}
+
+.color-dots span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.color-dots span + span {
+  margin-left: -5px;
+}

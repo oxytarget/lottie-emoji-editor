@@ -1,7 +1,7 @@
 import { extractPalette } from '../lottie/imported';
 import type { ItemPaint } from '../lottie/itemPaints';
 import { resolveItem } from '../lottie/itemPaints';
-import { parentOf } from '../lottie/layout';
+import { applyLayout, parentOf } from '../lottie/layout';
 import { matchColors, matchPart } from '../lottie/packs';
 import { isIdentityXf, shapeSiblings, type PartXf } from '../lottie/parts';
 import type { ImportedTemplate } from './store';
@@ -60,8 +60,12 @@ export function applyImportOp(t: ImportedTemplate, op: ImportOp): Patch {
       return { paints: op.paint && Object.keys(op.paint).length ? { ...rest, [op.item]: op.paint } : rest };
     }
     case 'partsReset': {
-      // Back to the imported structure too (inserted logos and moved layers go away).
-      const structure = t.layout.length ? { data: t.base, layout: [], palette: extractPalette(t.base) } : {};
+      // Back to the imported structure too (inserted logos and moved layers go away) — with the slot the pack
+      // analysis put in place of the logo, if it did.
+      const layout = t.defaults?.layout ?? [];
+      const same = JSON.stringify(layout) === JSON.stringify(t.layout);
+      const data = same ? t.data : applyLayout(t.base, layout, () => null);
+      const structure = same ? {} : { data, layout, palette: extractPalette(data) };
       return { ...structure, hidden: t.defaults?.hidden ?? [], replace: t.defaults?.replace ?? null, overlay: t.defaults?.overlay ?? false, transforms: {}, paints: {} };
     }
   }

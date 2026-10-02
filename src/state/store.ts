@@ -5,7 +5,7 @@ import { detectLang } from '../i18n';
 import { pageTheme, type Theme } from '../lib/theme';
 import type { Paint } from '../lottie/paint';
 import { extractPalette } from '../lottie/imported';
-import { applyLayoutOp, checkOp, CONTENT_SLOT, remapEdits, remapId, type Drop, type LayoutOp } from '../lottie/layout';
+import { applyLayout, applyLayoutOp, checkOp, CONTENT_SLOT, remapEdits, remapId, removalTarget, type Drop, type LayoutOp } from '../lottie/layout';
 import type { CompatIssue } from '../lottie/imported';
 import type { ItemPaint } from '../lottie/itemPaints';
 import { flattenParts, listParts, type PartXf } from '../lottie/parts';
@@ -39,8 +39,8 @@ export interface ImportedTemplate {
   notes?: { baked: number; issues: CompatIssue[] };
   /** Sticker from a Telegram pack (reloaded through the bot on every start). */
   source?: { pack: string; uid: string; emoji: string };
-  /** What the pack analysis picked — "reset" goes back to it. */
-  defaults?: Pick<ImportedTemplate, 'hidden' | 'replace' | 'overlay'>;
+  /** What the pack analysis picked (incl. a slot put in place of the logo) — "reset" goes back to it. */
+  defaults?: Pick<ImportedTemplate, 'hidden' | 'replace' | 'overlay'> & { layout?: LayoutOp[] };
 }
 
 /** Sticker pack used as templates. */
@@ -82,6 +82,8 @@ export interface EditorData {
   lang: Lang;
   /** Light or dark studio theme; null follows the system (or Telegram) until the user picks one. */
   theme: Theme | null;
+  /** New packs come in the colours of the user's logo/text (when it has colourful ones). */
+  autoBrand: boolean;
   mode: 'text' | 'logo';
   text: string;
   fontId: string;
@@ -175,6 +177,7 @@ const defaultPreset = PRESETS[1];
 export const initialData = (): EditorData => ({
   lang: detectLang(),
   theme: null,
+  autoBrand: true,
   mode: 'text',
   text: 'EMOJI',
   fontId: DEFAULT_FONT_ID,
@@ -212,7 +215,7 @@ export const initialData = (): EditorData => ({
 });
 
 /** Edits of a pack sticker as remembered across sessions. */
-const packEditOf = (t: ImportedTemplate): PackEdit => {
+export const packEditOf = (t: ImportedTemplate): PackEdit => {
   const { colorMap, overlay, hidden, replace, transforms, layout, paints } = t;
   return { colorMap, overlay, hidden, replace, transforms, layout, ...(paints && Object.keys(paints).length ? { paints } : {}) };
 };
@@ -323,7 +326,7 @@ export const useEditor = create<EditorData & EditorActions>()(
         // Straight to this sticker (a new slot has no counterpart in the others, so no "apply to all").
         get().updateImport(id, applyImportOp(get().imports.find((i) => i.id === id)!, { kind: 'replace', part: slot }));
         const stale = oldSlot ? remapId(oldSlot, insert, before.data) : null;
-        if (stale) get().layoutImport(id, { kind: 'remove', part: stale });
+        if (stale) get().layoutImport(id, { kind: 'remove', part: removalTarget(get().imports.find((i) => i.id === id)!.data, stale) });
         return get().imports.find((i) => i.id === id)?.replace ?? null;
       },
       addPackTemplates: (pack, templates, personal) => {
@@ -435,11 +438,15 @@ export const useEditor = create<EditorData & EditorActions>()(
       // Packs live in Telegram and Favourites are the user's library, so a reset keeps them
       // (pack stickers stay loaded, with their edits reset).
       reset: () => {
-        const { lang, theme, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
+        const { lang, theme, autoBrand, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
         const stickers = imports
           .filter((t) => t.source)
-          .map((t) => ({ ...t, data: t.base, layout: [], colorMap: {}, transforms: {}, ...(t.defaults ?? { hidden: [], replace: null, overlay: false }) }));
-        set({ ...initialData(), lang, theme, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
+          .map((t) => {
+            const { layout = [], ...picked } = t.defaults ?? { hidden: [], replace: null, overlay: false };
+            const data = layout.length ? applyLayout(t.base, layout, () => null) : t.base;
+            return { ...t, data, layout, palette: extractPalette(data), colorMap: {}, paints: {}, transforms: {}, ...picked };
+          });
+        set({ ...initialData(), lang, theme, autoBrand, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
       },
     }),
     {

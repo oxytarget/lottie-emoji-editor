@@ -1,8 +1,10 @@
 import { fetchSticker, fetchStickerSet } from '../lib/botApi';
 import { readLottieFile } from '../lottie/export';
 import { extractPalette, normalizeForTgs } from '../lottie/imported';
-import { applyLayout } from '../lottie/layout';
-import { analyzePack, packCandidates } from '../lottie/packs';
+import { applyLayout, applyLayoutOp, INSERTED, remapId, slotForRun, type LayoutOp } from '../lottie/layout';
+import { analyzePack, packCandidates, packRuns, type PackPick } from '../lottie/packs';
+import { translate } from '../i18n';
+import { brandImports, brandColors } from './brand';
 import { logoArt } from './logoArt';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from './store';
@@ -59,18 +61,21 @@ export async function loadPack(name: string, personal: boolean): Promise<void> {
 
   // The analysis sticker by sticker, giving the page a breath in between (one long task froze phones).
   const all = [];
+  const runs = [];
   for (const { data } of loaded) {
     await new Promise((r) => setTimeout(r, 0));
     all.push(packCandidates(data));
+    runs.push(packRuns(data));
   }
-  const picks = analyzePack(loaded.map((l) => l.data), all);
+  await new Promise((r) => setTimeout(r, 0));
+  const picks = analyzePack(loaded.map((l) => l.data), all, runs);
   const edits = useEditor.getState().packEdits;
+  const slotName = `${INSERTED}${translate(useEditor.getState().lang, 'layerYourText')}`;
   const templates: ImportedTemplate[] = loaded.map(({ item, data }, i) => {
-    const pick = picks[i];
-    const defaults = { hidden: pick.hidden, replace: pick.replace, overlay: !pick.replace };
+    const defaults = withSlot(data, picks[i], slotName);
     const saved = edits[item.uid];
-    // Layer-list edits are replayed on the freshly downloaded sticker.
-    const layout = saved?.layout ?? [];
+    // Layer-list edits are replayed on the freshly downloaded sticker (older saved edits have none).
+    const layout = saved?.layout ?? defaults.layout;
     const svgs = useEditor.getState().layoutSvgs;
     const edited = applyLayout(data, layout, (key) => logoArt(svgs[key]));
     return {
@@ -92,7 +97,24 @@ export async function loadPack(name: string, personal: boolean): Promise<void> {
     };
   });
   useEditor.getState().addPackTemplates({ name, title }, templates, personal);
+  // The pack in the colours of the user's logo/text right away (stickers recoloured earlier keep theirs).
+  if (useEditor.getState().autoBrand && brandColors('content').length) {
+    brandImports(templates.filter((t) => !Object.keys(t.colorMap).length).map((t) => t.id), 'content');
+  }
   status({ state: 'ready', count: templates.length, skipped: skipped + (items.length - loaded.length) });
+}
+
+/**
+ * What the analysis picked, ready to use: a logo drawn among other shapes gets a slot in its place (an
+ * operation of the layer list, so it can be undone like any other) and is hidden.
+ */
+function withSlot(data: LottieAnimation, pick: PackPick, name: string): NonNullable<ImportedTemplate['defaults']> & { layout: LayoutOp[] } {
+  if (!pick.run) return { hidden: pick.hidden, replace: pick.replace, overlay: !pick.replace, layout: [] };
+  const op = slotForRun(data, pick.run, name);
+  const slot = op ? applyLayoutOp(structuredClone(data), op, () => null) : null;
+  if (!op || !slot) return { hidden: [], replace: null, overlay: true, layout: [] };
+  const hidden = pick.hidden.flatMap((id) => remapId(id, op, data) ?? []);
+  return { hidden, replace: slot, overlay: false, layout: [op] };
 }
 
 /** Adds a pack to "My packs", opens its section, scrolls to it and loads it. */

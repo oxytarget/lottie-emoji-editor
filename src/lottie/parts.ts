@@ -180,6 +180,12 @@ export const INSERTED = '★ ';
 const isInserted = (p: Part) => p.name.startsWith(INSERTED);
 /** Match name (`mn`) of a slot for the user's text/logo — a standard Lottie field players ignore. */
 export const SLOT_MN = 'emoji-studio:content';
+/**
+ * Match name of the groups that carry a slot along with a logo's own group transforms when the slot cannot sit
+ * in that group (it has its own fills, which would paint the slot too) — see `slotForRun` in layout.ts. They are
+ * plumbing: the layer list shows what is inside them in their place.
+ */
+export const FOLLOW_MN = 'emoji-studio:follow';
 /** Match name of the precomp that frames a non-square animation on the square canvas (see `fitCanvas`). */
 export const CANVAS_MN = 'emoji-studio:canvas';
 
@@ -209,25 +215,28 @@ function groupParts(items: readonly ShapeItem[], prefix: string, groupDepth: num
   const counts: Record<string, number> = {};
   return indexed
     .filter(({ it }) => it.ty === 'gr' || (listShapes && GEOMETRY.has(it.ty)))
-    .map(({ it, idx }) => {
+    .flatMap(({ it, idx }): Part[] => {
+      if (it.ty === 'gr' && it.mn === FOLLOW_MN) return groupParts((it.it as ShapeItem[]) ?? [], `${prefix}/g${idx}`, groupDepth);
       if (it.ty !== 'gr') {
         counts[it.ty] = (counts[it.ty] ?? 0) + 1;
         const name = typeof it.nm === 'string' && it.nm ? it.nm : `${SHAPE_NAMES[it.ty]} ${counts[it.ty]}`;
-        return { id: `${prefix}/g${idx}`, name, kind: 'path' as const, detected: false, replaceable: false, children: [] };
+        return [{ id: `${prefix}/g${idx}`, name, kind: 'path' as const, detected: false, replaceable: false, children: [] }];
       }
       const id = `${prefix}/g${idx}`;
       const children = (it.it as ShapeItem[]) ?? [];
       const { box, contours } = itemsBBox(children);
       const name = typeof it.nm === 'string' && it.nm ? it.nm : `Group ${idx + 1}`;
-      return {
-        id,
-        name,
-        kind: 'group' as const,
-        detected: looksLikeText(name, contours, box),
-        replaceable: !!box,
-        ...(it.mn === SLOT_MN ? { slot: true } : {}),
-        children: unwrap(groupParts(children, id, groupDepth + 1)),
-      };
+      return [
+        {
+          id,
+          name,
+          kind: 'group' as const,
+          detected: looksLikeText(name, contours, box),
+          replaceable: !!box,
+          ...(it.mn === SLOT_MN ? { slot: true } : {}),
+          children: unwrap(groupParts(children, id, groupDepth + 1)),
+        },
+      ];
     });
 }
 
@@ -597,7 +606,8 @@ function pathTransforms(anim: LottieAnimation, id: string): Array<{ list?: AnyLa
 }
 
 /** Approximate bounds of a part on the canvas at frame `t` (first keyframe when omitted). */
-export function partBounds(anim: LottieAnimation, id: string, t?: number): BBox | null {
+export function partBounds(anim: LottieAnimation, id: string, t?: number, only?: readonly number[]): BBox | null {
+  const pick = (items: readonly ShapeItem[]) => (only ? items.filter((_, i) => only.includes(i)) : items.filter((it) => it.ty !== 'tr'));
   const assets = assetsById(anim);
   const [layerPath, ...groupPath] = id.split('/');
   let list = anim.layers as AnyLayer[];
@@ -628,9 +638,9 @@ export function partBounds(anim: LottieAnimation, id: string, t?: number): BBox 
       items = (g.it as ShapeItem[]) ?? [];
       m = multiply(m, transformMatrix(items.find((it) => it.ty === 'tr') as Json | undefined, t));
     }
-    collectContours(items.filter((it) => it.ty !== 'tr'), m, contours, t);
+    collectContours(items.length === 1 && GEOMETRY.has(items[0].ty) ? items : pick(items), m, contours, t);
   } else if (layer.ty === 4) {
-    collectContours((layer.shapes ?? []) as ShapeItem[], m, contours, t);
+    collectContours(pick((layer.shapes ?? []) as ShapeItem[]), m, contours, t);
   } else {
     const box = layerBox(layer, assets);
     if (box) contours.push(boxContour(box.x + box.w / 2, box.y + box.h / 2, box.w, box.h, m));
@@ -737,6 +747,12 @@ export function partGeometry(anim: LottieAnimation, id: string): PartGeometry | 
   const extra: string[] = [];
   if (target.type === 'group') collectContours(((target.group.it as ShapeItem[]) ?? []).filter((it) => it.ty !== 'tr'), IDENTITY, contours);
   else layerGeometry(target.layer, assetsById(anim), IDENTITY, contours, extra, 0);
+  return contoursGeometry(contours, extra, MAX_POINTS);
+}
+
+const contourSignature = (c: Contour) => `${c.closed ? 'c' : 'o'}${c.segs.length}`;
+
+function contoursGeometry(contours: readonly Contour[], extra: readonly string[], maxPoints: number, prefix = ''): PartGeometry | null {
   const box = contoursBBox(contours);
   const size = box ? Math.max(box.w, box.h) : 0;
   if (!extra.length && (!box || size <= 0)) return null;
@@ -751,14 +767,14 @@ export function partGeometry(anim: LottieAnimation, id: string): PartGeometry | 
     }
     // Evenly sampled end points keep the comparison cheap for detailed logos.
     const pairs = all.length / 2;
-    const step = Math.max(1, pairs / (MAX_POINTS / 2));
+    const step = Math.max(1, pairs / (maxPoints / 2));
     for (let i = 0; i < pairs; i += step) {
       const j = Math.floor(i) * 2;
       points.push((all[j] - box.x) / size, (all[j + 1] - box.y) / size);
     }
     if (box.w > 0 && box.h > 0) points.push(box.w / size, box.h / size);
   }
-  const key = `${extra.join('|')}#${contours.map((c) => `${c.closed ? 'c' : 'o'}${c.segs.length}`).join(',')}`;
+  const key = `${prefix}${extra.join('|')}#${contours.map(contourSignature).join(',')}`;
   return { key: hash(key), points, contours: contours.length, segments };
 }
 
@@ -767,6 +783,129 @@ export function sameGeometry(a: PartGeometry, b: PartGeometry, tolerance = 0.025
   if (a.key !== b.key || a.points.length !== b.points.length) return false;
   for (let i = 0; i < a.points.length; i++) if (Math.abs(a.points[i] - b.points[i]) > tolerance) return false;
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Runs of items: a logo drawn among other shapes
+// ---------------------------------------------------------------------------
+
+/**
+ * Consecutive drawable items (groups and single shapes) of one shape list — a shape layer or a group. A logo
+ * is often not a part of its own: its letters sit next to the body's shapes in one layer or group. Such a run
+ * repeats across the stickers of a pack where the rest does not (see `analyzePack`).
+ */
+export interface ShapeRun {
+  /** Part whose shape list holds the run (a shape layer or a group). */
+  container: string;
+  /** Indices of the run's items in that list. */
+  items: number[];
+  /** Structure of the run's outlines (the same for the same logo at any size and place). */
+  key: string;
+}
+
+const MAX_RUN_ITEMS = 20;
+const MAX_RUN_LIST = 90;
+const RUN_POINTS = 120;
+
+interface RunItem {
+  idx: number;
+  contours: Contour[];
+  box: BBox | null;
+  sig: string;
+}
+
+function runItems(items: readonly ShapeItem[]): RunItem[] {
+  return items.flatMap((it, idx) => {
+    if (it.ty !== 'gr' && !GEOMETRY.has(it.ty)) return [];
+    const contours: Contour[] = [];
+    collectContours([it], IDENTITY, contours);
+    return [{ idx, contours, box: contoursBBox(contours), sig: contours.map(contourSignature).join(',') }];
+  });
+}
+
+const boxArea = (b: BBox | null) => (b ? Math.max(0, b.w) * Math.max(0, b.h) : 0);
+
+function unionBox(a: BBox | null, b: BBox | null): BBox | null {
+  if (!a) return b;
+  if (!b) return a;
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+
+/** A plain shape (circle, rounded square…) under the rest of the run: a badge the logo sits on, not the logo. */
+function isPlate(item: RunItem, rest: BBox | null): boolean {
+  if (item.contours.length !== 1 || item.contours[0].segs.length > 8 || !item.box || !rest) return false;
+  const w = Math.min(item.box.x + item.box.w, rest.x + rest.w) - Math.max(item.box.x, rest.x);
+  const h = Math.min(item.box.y + item.box.h, rest.y + rest.h) - Math.max(item.box.y, rest.y);
+  return w > 0 && h > 0 && (w * h) / Math.max(1e-6, boxArea(rest)) > 0.85;
+}
+
+/**
+ * Every run of 2+ items in every shape list of the animation (not a whole list: that is a part of its own),
+ * with its structure only — cheap enough for every sticker of a pack. `runGeometry` gives the shape.
+ */
+export function shapeRuns(anim: LottieAnimation): ShapeRun[] {
+  const out: ShapeRun[] = [];
+  const assets = assetsById(anim);
+  const visitList = (items: readonly ShapeItem[], id: string, depth: number) => {
+    if (depth > MAX_GROUP_DEPTH) return;
+    const list = runItems(items);
+    if (list.length >= 3 && list.length <= MAX_RUN_LIST) {
+      for (let a = 0; a < list.length; a++) {
+        if (!list[a].contours.length) continue;
+        let sigs = list[a].sig;
+        let contours = list[a].contours.length;
+        let segments = list[a].contours.reduce((n, c) => n + c.segs.length, 0);
+        for (let b = a + 1; b < list.length && b - a < MAX_RUN_ITEMS; b++) {
+          sigs += `|${list[b].sig}`;
+          contours += list[b].contours.length;
+          segments += list[b].contours.reduce((n, c) => n + c.segs.length, 0);
+          if (!list[b].contours.length || (a === 0 && b === list.length - 1)) continue;
+          if (contours < 2 && segments < 10) continue;
+          const run = list.slice(a, b + 1);
+          const inner = (from: number, to: number) => run.slice(from, to).reduce<BBox | null>((u, r) => unionBox(u, r.box), null);
+          if (isPlate(run[0], inner(1, run.length)) || isPlate(run[run.length - 1], inner(0, run.length - 1))) continue;
+          out.push({ container: id, items: run.map((r) => r.idx), key: hash(`R:${sigs}`) });
+        }
+      }
+    }
+    for (const { idx } of list) {
+      const it = items[idx];
+      if (it.ty === 'gr') visitList((it.it as ShapeItem[]) ?? [], `${id}/g${idx}`, depth + 1);
+    }
+  };
+  const visitLayers = (layers: readonly AnyLayer[], prefix: string, seen: Set<string>) => {
+    layers.forEach((layer, i) => {
+      const id = `${prefix}l${i}`;
+      if (layer.ty === 4) visitList((layer.shapes ?? []) as ShapeItem[], id, 1);
+      else if (layer.ty === 0 && layer.refId && !seen.has(layer.refId)) {
+        const asset = assets.get(layer.refId);
+        if (asset?.layers) visitLayers(asset.layers, `${id}>`, new Set([...seen, layer.refId]));
+      }
+    });
+  };
+  visitLayers(anim.layers as AnyLayer[], '', new Set());
+  return out;
+}
+
+/** The items of a shape list (a layer's shapes or a group's items), or null. */
+export function shapeList(anim: LottieAnimation, id: string): ShapeItem[] | null {
+  const target = resolve(anim, id);
+  if (!target) return null;
+  if (target.type === 'group') return (target.group.it as ShapeItem[]) ?? [];
+  return target.layer.ty === 4 ? ((target.layer.shapes ?? []) as ShapeItem[]) : null;
+}
+
+/** Normalised shape of a run (as `partGeometry`) and its box in the coordinates of its list. */
+export function runGeometry(anim: LottieAnimation, run: Pick<ShapeRun, 'container' | 'items'>): (PartGeometry & { box: BBox }) | null {
+  const items = shapeList(anim, run.container);
+  if (!items) return null;
+  const contours: Contour[] = [];
+  collectContours(run.items.map((i) => items[i]).filter(Boolean), IDENTITY, contours);
+  const geo = contoursGeometry(contours, [], RUN_POINTS, 'R:');
+  const box = contoursBBox(contours);
+  return geo && box ? { ...geo, box } : null;
 }
 
 /**

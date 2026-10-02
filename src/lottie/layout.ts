@@ -1,8 +1,8 @@
 import { artToShapes, fitArt, type VectorArt } from '../content/art';
 import { solid } from './paint';
-import { assetsOf, INSERTED, isCanvasFrame, itemsBounds, resolvePart, SLOT_MN, type AnyLayer } from './parts';
+import { assetsOf, FOLLOW_MN, INSERTED, isCanvasFrame, itemsBounds, resolvePart, shapeList, SLOT_MN, type AnyLayer } from './parts';
 import { stat } from './anim';
-import { group } from './shapes';
+import { group, shapeTransform } from './shapes';
 import type { LottieAnimation, ShapeItem } from './types';
 
 /**
@@ -22,8 +22,15 @@ export interface Drop {
   index: number;
 }
 
+/** Consecutive items of a shape list (see `ShapeRun` in parts.ts). */
+export interface RunRef {
+  container: string;
+  items: number[];
+}
+
 export type LayoutOp =
-  | { kind: 'insert'; svg: string; name: string; at: Drop }
+  /** `follow`: a slot in place of a logo drawn by these items (their box, their motion) — see `slotForRun`. */
+  | { kind: 'insert'; svg: string; name: string; at: Drop; follow?: RunRef }
   | { kind: 'move'; part: string; at: Drop }
   | { kind: 'remove'; part: string };
 
@@ -205,6 +212,74 @@ function logoShapes(art: VectorArt, w: number, h: number): ShapeItem[] {
 /** An empty frame (a rectangle without paint) — the size the user's text/logo is fitted into. */
 const slotFrame = (w: number, h: number): ShapeItem => ({ ty: 'rc', nm: 'frame', d: 1, p: stat([0, 0]), s: stat([Math.round(w), Math.round(h)]), r: stat(0) });
 
+// ---------------------------------------------------------------------------
+// A slot in place of a logo drawn among other shapes
+// ---------------------------------------------------------------------------
+
+const STYLES = new Set(['fl', 'st', 'gf', 'gs']);
+
+/**
+ * The operation that puts a slot for the user's text/logo where a logo drawn by `run` is: in the run's own list
+ * right above it — or, when that list has fills of its own (they would paint the slot as well), next to the
+ * nearest group up the tree whose list has none, carried by copies of the transforms in between, so the slot
+ * moves exactly like the logo did. Hide the run's items to finish the swap.
+ */
+export function slotForRun(anim: LottieAnimation, run: RunRef, name: string): LayoutOp | null {
+  if (!run.items.length) return null;
+  let container = run.container;
+  let index = Math.min(...run.items);
+  for (;;) {
+    const items = shapeList(anim, container);
+    if (!items) return null;
+    // A shape layer's own list is as far as it goes (a fill at that level is rare).
+    if (!items.some((it) => STYLES.has(it.ty)) || !container.includes('/')) break;
+    ({ parent: container, index } = parentOf(container));
+  }
+  return { kind: 'insert', svg: CONTENT_SLOT, name, at: { parent: container, index }, follow: run };
+}
+
+/**
+ * The slot group for `run`, inside wrappers repeating the transforms of the groups between `parent` (where it is
+ * inserted) and the run's list. `path` = the slot's id below the inserted item.
+ */
+function followSlot(anim: LottieAnimation, parent: string, run: RunRef, name: string): { item: ShapeItem; path: Token[] } | null {
+  const items = shapeList(anim, run.container);
+  if (!items) return null;
+  const { box } = itemsBounds(run.items.map((i) => items[i]).filter(Boolean));
+  if (!box || box.w <= 0 || box.h <= 0) return null;
+  const slot = group([slotFrame(box.w, box.h)], { p: [box.x + box.w / 2, box.y + box.h / 2] }, name);
+  slot.mn = SLOT_MN;
+  // Groups from just below `parent` down to the run's list, outermost first.
+  const own = parseId(run.container);
+  const above = parseId(parent);
+  if (!startsWith(own, above)) return null;
+  const chain: ShapeItem[] = [];
+  for (let n = above.length + 1; n <= own.length; n++) {
+    const target = resolvePart(anim, formatId(own.slice(0, n)));
+    if (!target || target.type !== 'group') return null;
+    const tr = ((target.group.it as ShapeItem[]) ?? []).find((it) => it.ty === 'tr');
+    chain.push(tr ? structuredClone(tr) : shapeTransform({}));
+  }
+  let item = slot;
+  const path: Token[] = [];
+  for (const tr of chain.reverse()) {
+    item = { ty: 'gr', nm: name, mn: FOLLOW_MN, it: [item, tr] };
+    path.push({ sep: '/', type: 'g', i: 0 });
+  }
+  return { item, path };
+}
+
+/** The part to remove for `id`: a slot carried by follow wrappers goes with them. */
+export function removalTarget(anim: LottieAnimation, id: string): string {
+  let target = id;
+  for (;;) {
+    const { parent } = parentOf(target);
+    const p = parent && parent.includes('/') ? resolvePart(anim, parent) : null;
+    if (!p || p.type !== 'group' || p.group.mn !== FOLLOW_MN) return target;
+    target = parent;
+  }
+}
+
 /** Why an operation cannot be applied (the UI does not offer such drops). */
 export function checkOp(anim: LottieAnimation, op: LayoutOp): string | null {
   if (op.kind === 'insert') return childList(anim, op.at.parent) ? null : 'no-container';
@@ -237,6 +312,12 @@ export function applyLayoutOp(anim: LottieAnimation, op: LayoutOp, svgArt: (svg:
     const ref = childList(anim, op.at.parent)!;
     if (!art && !slot) return null;
     const at = insertIndex(ref, op.at.index);
+    if (slot && op.follow && ref.kind === 'items') {
+      const built = followSlot(anim, op.at.parent, op.follow, op.name);
+      if (!built) return null;
+      (ref.list as ShapeItem[]).splice(at, 0, built.item);
+      return formatId([...parseId(op.at.parent), childToken(ref.kind, op.at.parent, at), ...built.path]);
+    }
     if (ref.kind === 'layers') {
       const layers = ref.list as AnyLayer[];
       const { w, h } = ref.size!;

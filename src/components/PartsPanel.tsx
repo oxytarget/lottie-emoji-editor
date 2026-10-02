@@ -9,7 +9,7 @@ import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
 import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ImageIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, TypeIcon, WarningIcon } from './icons';
 import { applyLayerOp, DragGhost, FavLogoStrip, useLayerDnd, type DragSource } from './LayerDnd';
-import { checkOp, INSERTED, parentOf, rootOf, type Drop } from '../lottie/layout';
+import { checkOp, INSERTED, parentOf, removalTarget, rootOf, type Drop } from '../lottie/layout';
 import { MotionButton, Slider } from './controls';
 import { LayerPaints } from './LayerPaints';
 import { useInView } from './LottieView';
@@ -136,7 +136,7 @@ function LayerMoves({ imp, part, flat }: { imp: ImportedTemplate; part: Part; fl
         </button>
       )}
       {part.name.startsWith(INSERTED) && (
-        <MotionButton motion="wiggle" className="pill-btn is-compact is-danger" icon={<TrashIcon width={16} height={16} />} label={t('layerRemove')} onClick={() => applyLayerOp(imp, { kind: 'remove', part: part.id })}>
+        <MotionButton motion="wiggle" className="pill-btn is-compact is-danger" icon={<TrashIcon width={16} height={16} />} label={t('layerRemove')} onClick={() => applyLayerOp(imp, { kind: 'remove', part: removalTarget(imp.data, part.id) })}>
           {t('layerRemove')}
         </MotionButton>
       )}
