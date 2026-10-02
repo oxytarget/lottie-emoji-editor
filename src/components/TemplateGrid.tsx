@@ -11,7 +11,7 @@ import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import type { Localized } from '../templates/types';
 import { MotionButton } from './controls';
-import { CheckIcon, ChevronIcon, PlusIcon, StickersIcon, TrashIcon } from './icons';
+import { CheckIcon, ChevronIcon, PlusIcon, SparkleIcon, StickersIcon, TrashIcon } from './icons';
 import { usePoster } from '../state/posters';
 import { LottieView, useInView } from './LottieView';
 import { usePresence } from './motion';
@@ -118,7 +118,7 @@ const Tile = memo(function Tile(props: TileProps) {
   );
 }, sameTile);
 
-function PackForm({ onDone }: { onDone: () => void }) {
+export function PackForm({ onDone }: { onDone: () => void }) {
   const t = useT();
   const [value, setValue] = useState('');
   const [bad, setBad] = useState(false);
@@ -237,6 +237,45 @@ function PackSection({ pack, personal, byId }: { pack: PackRef; personal: boolea
   );
 }
 
+/** The built-in characters as a pack of their own: it folds away like the imported ones. */
+function BuiltinPack({ main }: { main: CompiledEmoji[] }) {
+  const t = useT();
+  const lang = useEditor((s) => s.lang);
+  const open = useUi((u) => u.openPacks['@builtin'] ?? true);
+  const setOpen = useUi((u) => u.setPackOpen);
+  const picked = useEditor((s) => s.selected.filter((id) => main.some((e) => e.id === id)).length);
+  return (
+    <div className={`pack-section is-builtin${open ? ' is-open' : ''}`} id="pack-builtin">
+      <div className="pack-head">
+        <button type="button" className="pack-toggle" aria-expanded={open} onClick={() => setOpen('@builtin', !open)}>
+          <SparkleIcon width={20} height={20} />
+          <span className="pack-title">
+            <strong>{t('characters')}</strong>
+            <span className="hint">
+              {main.length}
+              {picked ? ` · ${t('selectedChip')}: ${picked}` : ` · ${t('charactersHint')}`}
+            </span>
+          </span>
+          <ChevronIcon width={18} height={18} className={open ? 'is-flipped' : ''} />
+        </button>
+      </div>
+      <div className="collapsible-anim" inert={!open}>
+        <div className="collapsible-clip">
+          <div className="collapsible-body">
+            {open && (
+              <div className="tile-grid">
+                {main.map((e, i) => (
+                  <Tile key={e.id} id={e.id} name={emojiName(e.name, lang)} emoji={e} index={i} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PackSections({ byId }: { byId: Map<string, CompiledEmoji> }) {
   const t = useT();
   const botPacks = useUi((u) => u.botPacks) ?? [];
@@ -269,7 +308,6 @@ function PackSections({ byId }: { byId: Map<string, CompiledEmoji> }) {
 
 export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: Map<string, CompiledEmoji> }) {
   const t = useT();
-  const lang = useEditor((s) => s.lang);
   const addImport = useEditor((s) => s.addImport);
   const fileRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState(false);
@@ -311,21 +349,12 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
 
   return (
     <>
+      <BuiltinPack main={main} />
       <section className="grid-section">
-        <div className="grid-head">
-          <h3 className="section-title">{t('characters')}</h3>
-          <span className="hint">
-            {t('charactersHint')} · {main.length}
-          </span>
-        </div>
-        <div className="tile-grid">
-          {main.map((e, i) => (
-            <Tile key={e.id} id={e.id} name={emojiName(e.name, lang)} emoji={e} index={i} />
-          ))}
+        <div className="tile-grid add-tiles">
           <button
             type="button"
             className="tile tile-import"
-            style={{ '--i': Math.min(main.length, 24) } as React.CSSProperties}
             aria-busy={importing}
             disabled={importing}
             onClick={() => fileRef.current?.click()}
@@ -338,7 +367,7 @@ export function TemplateGrid({ emojis, byId }: { emojis: CompiledEmoji[]; byId: 
               type="button"
               className={`tile tile-import${packForm ? ' is-active' : ''}`}
               aria-expanded={packForm}
-              style={{ '--i': Math.min(main.length + 1, 24) } as React.CSSProperties}
+              style={{ '--i': 1 } as React.CSSProperties}
               onClick={() => setPackForm((v) => !v)}
             >
               <StickersIcon width={30} height={30} />

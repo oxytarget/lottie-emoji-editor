@@ -10,8 +10,13 @@ export type PackStatus =
 
 export type Tab = 'templates' | 'content' | 'colors' | 'parts';
 
+/** App sections (bottom navigation): the editor, the user's packs, drafts, profile & settings. */
+export type Section = 'create' | 'studio' | 'drafts' | 'profile';
+
 /** Session-only UI state shared between the grid, the preview and the parts list. */
 interface UiState {
+  section: Section;
+  setSection(section: Section): void;
   /** Editor panel shown under the preview. */
   tab: Tab;
   setTab(tab: Tab): void;
@@ -51,6 +56,8 @@ const pendingVisible = new Map<string, boolean>();
 let visibleTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useUi = create<UiState>()((set, get) => ({
+  section: 'create',
+  setSection: (section) => set({ section }),
   tab: 'templates',
   setTab: (tab) => set({ tab }),
   visible: new Set(),

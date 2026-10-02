@@ -41,7 +41,7 @@ interface TelegramWebApp {
   openLink?(url: string): void;
   openTelegramLink?(url: string): void;
   HapticFeedback?: { selectionChanged(): void; impactOccurred(style: string): void };
-  initDataUnsafe?: { user?: { language_code?: string } };
+  initDataUnsafe?: { user?: { language_code?: string; first_name?: string; last_name?: string; username?: string; photo_url?: string } };
   platform?: string;
 }
 
@@ -91,14 +91,14 @@ export function initTelegram(): Promise<void> {
 /** Fired when Telegram is ready or its colour scheme changes. */
 export const TG_THEME_EVENT = 'tg-theme';
 
-/** Telegram's header, background and bottom bar in the page's own colour, so they read as one surface. */
-export function setTelegramChrome(color: string): void {
+/** Telegram's background in the page's colour; its header and bottom bar in the accent (the app's frame). */
+export function setTelegramChrome(background: string, frame = background): void {
   const app = webApp();
   if (!app) return;
   try {
-    app.setHeaderColor?.(color);
-    app.setBackgroundColor?.(color);
-    app.setBottomBarColor?.(color);
+    app.setHeaderColor?.(frame);
+    app.setBackgroundColor?.(background);
+    app.setBottomBarColor?.(frame);
   } catch {
     /* older clients */
   }
@@ -200,4 +200,12 @@ export function openExternal(url: string): void {
   const app = webApp();
   if (app?.openLink) app.openLink(url);
   else window.open(url, '_blank', 'noopener');
+}
+
+/** The Telegram user who opened the Mini App (null in a browser). */
+export function telegramUser(): { name: string; username?: string; photo?: string } | null {
+  const u = webApp()?.initDataUnsafe?.user;
+  if (!u) return null;
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || '';
+  return name ? { name, username: u.username, photo: u.photo_url } : null;
 }

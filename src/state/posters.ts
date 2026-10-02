@@ -160,3 +160,26 @@ export function usePoster(json: string | null | undefined, at: PosterAt, size: n
   }, [json, atKey, size, enabled]);
   return url;
 }
+
+/** A poster as a data URL, to keep (drafts); null when it cannot be drawn in a few seconds. */
+export async function posterDataUrl(json: string, at: PosterAt, size: number): Promise<string | null> {
+  const url = await new Promise<string | null>((resolve) => {
+    const cancel = requestPoster(json, at, size, resolve);
+    setTimeout(() => {
+      cancel();
+      resolve(null);
+    }, 4000);
+  });
+  if (!url) return null;
+  try {
+    const blob = await (await fetch(url)).blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}

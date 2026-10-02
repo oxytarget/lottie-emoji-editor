@@ -43,6 +43,23 @@ export interface ImportedTemplate {
   defaults?: Pick<ImportedTemplate, 'hidden' | 'replace' | 'overlay'> & { layout?: LayoutOp[] };
 }
 
+/** The design fields a draft keeps (text/logo, colours, placement, chosen templates). */
+export const DRAFT_KEYS = [
+  'mode', 'text', 'fontId', 'textFill', 'textOutline', 'textOutlineWidth', 'letterSpacing', 'lineHeight', 'uppercase', 'logo', 'logoColors',
+  'logoOutline', 'colors', 'presetId', 'outlineWidth', 'scale', 'offsetY', 'offsetX', 'rotation', 'stretch', 'selected', 'active',
+] as const;
+export type DraftDesign = Pick<EditorData, (typeof DRAFT_KEYS)[number]>;
+
+/** A saved state of the work, to come back to later. */
+export interface Draft {
+  id: string;
+  name: string;
+  savedAt: number;
+  /** Small picture of the emoji shown when it was saved (PNG data URL). */
+  thumb?: string;
+  design: DraftDesign;
+}
+
 /** Sticker pack used as templates. */
 export interface PackRef {
   name: string;
@@ -84,6 +101,8 @@ export interface EditorData {
   theme: Theme | null;
   /** New packs come in the colours of the user's logo/text (when it has colourful ones). */
   autoBrand: boolean;
+  /** Saved states of the work, newest first. */
+  drafts: Draft[];
   mode: 'text' | 'logo';
   text: string;
   fontId: string;
@@ -170,6 +189,12 @@ export interface EditorActions {
   removeUserPreset(id: string): void;
   applyUserPreset(preset: UserPreset): void;
   reset(): void;
+  /** Saves the current work as a draft (or over draft `id`); returns its id. */
+  saveDraft(thumb?: string, id?: string): string;
+  /** Puts a draft's design back into the editor. */
+  openDraft(id: string): void;
+  deleteDraft(id: string): void;
+  renameDraft(id: string, name: string): void;
 }
 
 const defaultPreset = PRESETS[1];
@@ -178,6 +203,7 @@ export const initialData = (): EditorData => ({
   lang: detectLang(),
   theme: null,
   autoBrand: true,
+  drafts: [],
   mode: 'text',
   text: 'EMOJI',
   fontId: DEFAULT_FONT_ID,
@@ -229,6 +255,14 @@ export const MAX_FAV_LOGO_CHARS = 300_000;
 const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 const isSessionOnly = (id: string) => id.startsWith('import-') || id.startsWith('pack:');
+
+const MAX_DRAFTS = 24;
+
+/** "«HELLO» · 3", or the logo's name. */
+function draftName(d: DraftDesign): string {
+  const what = d.mode === 'logo' && d.logo ? d.logo.name.replace(/\.svg$/i, '') : `«${d.text.split('\n')[0].trim().slice(0, 24) || '…'}»`;
+  return `${what} · ${d.selected.length}`;
+}
 
 /** Logos bigger than this are not written to localStorage (quota is ~5 MB). */
 const MAX_PERSISTED_LOGO = 400_000;
@@ -437,8 +471,38 @@ export const useEditor = create<EditorData & EditorActions>()(
       },
       // Packs live in Telegram and Favourites are the user's library, so a reset keeps them
       // (pack stickers stay loaded, with their edits reset).
+      saveDraft: (thumb, id) => {
+        const s = get();
+        const design = Object.fromEntries(DRAFT_KEYS.map((k) => [k, structuredClone(s[k])])) as DraftDesign;
+        // A huge logo would not fit in the browser's storage next to the others.
+        if (design.logo && design.logo.svg.length > MAX_PERSISTED_LOGO) design.logo = null;
+        design.selected = design.selected.filter((x) => !x.startsWith('import-'));
+        const old = id ? s.drafts.find((d) => d.id === id) : undefined;
+        const draft: Draft = {
+          id: old?.id ?? newId('draft'),
+          name: old?.name ?? draftName(design),
+          savedAt: Date.now(),
+          ...(thumb ? { thumb } : old?.thumb ? { thumb: old.thumb } : {}),
+          design,
+        };
+        set({ drafts: [draft, ...s.drafts.filter((d) => d.id !== draft.id)].slice(0, MAX_DRAFTS) });
+        return draft.id;
+      },
+      openDraft: (id) => {
+        const draft = get().drafts.find((d) => d.id === id);
+        if (!draft) return;
+        const { imports, myPacks } = get();
+        const design = structuredClone(draft.design);
+        // Pack stickers come back when their pack is loaded; animations imported in an old session do not.
+        const known = (x: string) => !x.startsWith('import-') && (!x.startsWith('pack:') || imports.some((i) => i.id === x) || myPacks.some((p) => x.startsWith(`pack:${p.name}:`)));
+        design.selected = design.selected.filter(known);
+        if (!known(design.active)) design.active = design.selected[0] ?? 'classic';
+        set(design);
+      },
+      deleteDraft: (id) => set({ drafts: get().drafts.filter((d) => d.id !== id) }),
+      renameDraft: (id, name) => set({ drafts: get().drafts.map((d) => (d.id === id ? { ...d, name: name.trim() || d.name } : d)) }),
       reset: () => {
-        const { lang, theme, autoBrand, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
+        const { lang, theme, autoBrand, drafts, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
         const stickers = imports
           .filter((t) => t.source)
           .map((t) => {
@@ -446,7 +510,7 @@ export const useEditor = create<EditorData & EditorActions>()(
             const data = layout.length ? applyLayout(t.base, layout, () => null) : t.base;
             return { ...t, data, layout, palette: extractPalette(data), colorMap: {}, paints: {}, transforms: {}, ...picked };
           });
-        set({ ...initialData(), lang, theme, autoBrand, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
+        set({ ...initialData(), lang, theme, autoBrand, drafts, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
       },
     }),
     {

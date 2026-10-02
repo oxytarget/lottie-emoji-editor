@@ -4,23 +4,21 @@ import { ContentCard } from './components/ContentCard';
 import { ExportSheet } from './components/ExportSheet';
 import { MotionButton } from './components/controls';
 import { Segmented } from './components/controls';
-import { DownloadIcon, GridIcon, LayersIcon, MoonIcon, PaletteIcon, ResetIcon, SunIcon, TypeIcon } from './components/icons';
-import { Bump, usePresence, useSlidingIndicator } from './components/motion';
+import { DownloadIcon, GridIcon, LayersIcon, PaletteIcon, StickersIcon, TypeIcon } from './components/icons';
+import { Bump, usePresence } from './components/motion';
 import { FavColorBar, PaintBanner } from './components/FavColors';
 import { ImportedPanel, PreviewCard } from './components/PreviewCard';
+import { DraftsPage, goTo, ProfilePage, SaveDraftButton, SectionNav, StudioPage } from './components/Sections';
 import { TemplateGrid } from './components/TemplateGrid';
 import type { I18nKey } from './i18n';
 import { fetchBotPacks, packsAvailable } from './lib/botApi';
-import { confirmAction, haptic, useBackButton, useMainButton } from './lib/telegram';
+import { haptic, useBackButton, useMainButton } from './lib/telegram';
 import { THEME_COLORS, useApplyTheme, useSystemTheme } from './lib/theme';
 import { openPack } from './state/packs';
 import { useEditor } from './state/store';
 import { useUi, type Tab } from './state/ui';
 import { useCompiled } from './state/useCompiled';
 import { useT } from './state/useT';
-import type { Lang } from './templates/types';
-
-const LANGS: Lang[] = ['uk', 'ru', 'en'];
 
 const TABS: Array<{ value: Tab; key: I18nKey; icon: React.ReactNode }> = [
   { value: 'templates', key: 'tabTemplates', icon: <GridIcon width={18} height={18} /> },
@@ -123,20 +121,20 @@ function usePackBootstrap() {
   }, []);
 }
 
-/** A sparkle in the studio's purple → blue → teal gradient. */
+/** A sparkle in the studio's violet gradient. */
 function BrandMark() {
   return (
     <span className="brand-mark" aria-hidden>
       <svg viewBox="0 0 40 40">
         <defs>
           <linearGradient id="brand-grad" x1="0.15" y1="0" x2="0.85" y2="1">
-            <stop offset="0" stopColor="#b15cf7" />
-            <stop offset="0.5" stopColor="#6a7ff6" />
-            <stop offset="1" stopColor="#22c9bd" />
+            <stop offset="0" stopColor="#c4b5fd" />
+            <stop offset="0.5" stopColor="#8b5cf6" />
+            <stop offset="1" stopColor="#6d28d9" />
           </linearGradient>
         </defs>
         <path d="M18 4c1.3 8.6 5.4 12.7 14 14-8.6 1.3-12.7 5.4-14 14-1.3-8.6-5.4-12.7-14-14 8.6-1.3 12.7-5.4 14-14Z" fill="url(#brand-grad)" />
-        <path d="M32 2.5c.5 3 1.9 4.4 4.9 4.9-3 .5-4.4 1.9-4.9 4.9-.5-3-1.9-4.4-4.9-4.9 3-.5 4.4-1.9 4.9-4.9Z" fill="#22c9bd" />
+        <path d="M32 2.5c.5 3 1.9 4.4 4.9 4.9-3 .5-4.4 1.9-4.9 4.9-.5-3-1.9-4.4-4.9-4.9 3-.5 4.4-1.9 4.9-4.9Z" fill="#a78bfa" />
       </svg>
     </span>
   );
@@ -146,7 +144,6 @@ export default function App() {
   const t = useT();
   const compiled = useCompiled();
   usePackBootstrap();
-  const lang = useEditor((s) => s.lang);
   const set = useEditor((s) => s.set);
   const chosenTheme = useEditor((s) => s.theme);
   const systemTheme = useSystemTheme();
@@ -160,13 +157,11 @@ export default function App() {
     shownTheme.current = theme;
     if (before !== theme && useEditor.getState().previewBg === before) set('previewBg', theme);
   }, [theme, set]);
-  const reset = useEditor((s) => s.reset);
   const selected = useEditor((s) => s.selected);
   const active = useEditor((s) => s.active);
+  const section = useUi((u) => u.section);
   const [exportOpen, setExportOpen] = useState(false);
   const sheet = usePresence(exportOpen, 260);
-  const langRef = useRef<HTMLDivElement>(null);
-  const langPill = useSlidingIndicator(langRef, lang);
   const closeExport = useCallback(() => setExportOpen(false), []);
 
   const selectedEmojis = selected.map((id) => compiled.byId.get(id)).filter((e) => e !== undefined);
@@ -181,12 +176,14 @@ export default function App() {
   // Inside Telegram the main action is Telegram's own bottom button; the Back button closes the sheet.
   const nativeButton = useMainButton({
     text: `${t('download')} (${selectedEmojis.length})`,
-    visible: !sheet.mounted,
+    visible: !sheet.mounted && section === 'create',
     enabled: selectedEmojis.length > 0,
     color: THEME_COLORS[theme].accent,
     onClick: () => setExportOpen(true),
   });
-  useBackButton(exportOpen, closeExport);
+  // Telegram's Back button closes the sheet, or goes back to the editor from another section.
+  const back = useCallback(() => (exportOpen ? closeExport() : goTo('create')), [exportOpen, closeExport]);
+  useBackButton(exportOpen || section !== 'create', back);
 
   return (
     <div className={`app${nativeButton ? ' has-native-button' : ''}${painting ? ' is-painting' : ''}`} ref={appRef}>
@@ -194,60 +191,19 @@ export default function App() {
         <div className="brand">
           <BrandMark />
           <div>
-            <h1>
-              {t('appTitle')}
-              <span className="brand-cursor" aria-hidden>
-                _
-              </span>
-            </h1>
+            <h1>{t('appTitle')}</h1>
             <p>{t('appSubtitle')}</p>
           </div>
         </div>
-        <div className="topbar-actions">
-          <div className="lang-switch" role="radiogroup" aria-label="Language" ref={langRef}>
-            <span className="slide-pill" style={langPill} aria-hidden />
-            {LANGS.map((l) => (
-              <button
-                key={l}
-                type="button"
-                role="radio"
-                data-slide-key={l}
-                aria-checked={lang === l}
-                className={lang === l ? 'is-active' : ''}
-                onClick={() => set('lang', l)}
-              >
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          {/* Phones: one button that goes through the languages (the switch does not fit next to the name). */}
-          <button
-            type="button"
-            className="icon-btn is-round is-ghost lang-cycle"
-            aria-label={`${t('langNext')}: ${lang.toUpperCase()}`}
-            title={t('langNext')}
-            onClick={() => set('lang', LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length])}
-          >
-            {lang.toUpperCase()}
-          </button>
-          <MotionButton
-            motion="spin"
-            className="icon-btn is-round is-ghost theme-btn"
-            label={t(theme === 'dark' ? 'themeLight' : 'themeDark')}
-            icon={theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-            onClick={toggleTheme}
-          />
-          <MotionButton
-            motion="spin-back"
-            className="icon-btn is-round is-ghost"
-            label={t('reset')}
-            icon={<ResetIcon />}
-            onClick={async () => (await confirmAction(t('resetConfirm'))) && reset()}
-          />
-        </div>
+        <SectionNav />
+        <button type="button" className="selected-chip" onClick={() => goTo('create')} title={t('selectedChip')}>
+          <StickersIcon width={16} height={16} />
+          <Bump value={selectedEmojis.length} />
+          <span className="selected-chip-label">{t('selectedChip')}</span>
+        </button>
       </header>
 
-      <main className="layout">
+      <main className="layout" hidden={section !== 'create'}>
         <div className="area-preview" ref={previewRef}>
           <PreviewCard emoji={activeEmoji} pending={compiled.pending} input={compiled.input} />
         </div>
@@ -267,13 +223,20 @@ export default function App() {
         </div>
       </main>
 
-      {!nativeButton && (
-        <div className="bottom-bar">
-          <MotionButton motion="drop" className="primary-btn" label={t('download')} icon={<DownloadIcon />} disabled={selectedEmojis.length === 0} onClick={() => setExportOpen(true)}>
-            <span>
-              {t('download')} (<Bump value={selectedEmojis.length} />)
-            </span>
-          </MotionButton>
+      {section === 'studio' && <StudioPage />}
+      {section === 'drafts' && <DraftsPage json={activeEmoji?.json} />}
+      {section === 'profile' && <ProfilePage theme={theme} onTheme={toggleTheme} />}
+
+      {section === 'create' && (
+        <div className={`bottom-bar${nativeButton ? ' is-native' : ''}`}>
+          <SaveDraftButton json={activeEmoji?.json} className="icon-btn is-round draft-quick" />
+          {!nativeButton && (
+            <MotionButton motion="drop" className="primary-btn" label={t('download')} icon={<DownloadIcon />} disabled={selectedEmojis.length === 0} onClick={() => setExportOpen(true)}>
+              <span>
+                {t('download')} (<Bump value={selectedEmojis.length} />)
+              </span>
+            </MotionButton>
+          )}
         </div>
       )}
 

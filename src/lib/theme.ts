@@ -6,8 +6,8 @@ export type Theme = 'light' | 'dark';
 
 /** Page background and accent of each theme: Telegram's header and native button take them. */
 export const THEME_COLORS: Record<Theme, { bg: string; accent: string }> = {
-  dark: { bg: '#0a0a0f', accent: '#5574f2' },
-  light: { bg: '#f3f4fa', accent: '#4462ec' },
+  dark: { bg: '#0e0e15', accent: '#7c5cf6' },
+  light: { bg: '#f4f4f9', accent: '#8b5cf6' },
 };
 
 /** The theme on the page right now (index.html sets it before anything else runs). */
@@ -63,11 +63,11 @@ export function useApplyTheme(theme: Theme): void {
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme;
-    const { bg } = THEME_COLORS[theme];
+    const { bg, accent } = THEME_COLORS[theme];
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg);
-    setTelegramChrome(bg);
-    // Telegram may load after the first render: give it the colour once it is there.
-    const onTelegram = () => setTelegramChrome(bg);
+    setTelegramChrome(bg, accent);
+    // Telegram may load after the first render: give it the colours once it is there.
+    const onTelegram = () => setTelegramChrome(bg, accent);
     window.addEventListener(TG_THEME_EVENT, onTelegram);
     return () => window.removeEventListener(TG_THEME_EVENT, onTelegram);
   }, [theme]);
