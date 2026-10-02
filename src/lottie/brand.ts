@@ -212,6 +212,16 @@ export function paintBrandColors(paints: readonly (Paint | null | undefined)[]):
 // Recolouring
 // ---------------------------------------------------------------------------
 
+/** `c` (a colour of the family `f`) moved to `to`: the same lightness step from the family, its own shading. */
+function shifted(c: Lch, f: { L: number; C: number; h: number }, to: Lch): string {
+  const L = Math.min(0.97, Math.max(0.06, to.L + (c.L - f.L)));
+  // Greys have no hue to keep: they all take the new colour's.
+  if (f.C < 0.035) return oklchToHex({ L, C: to.C, h: to.h });
+  const C = Math.min(0.37, (c.C * to.C) / Math.max(f.C, 0.02));
+  const h = (to.h + (((c.h - f.h + 540) % 360) - 180) * 0.4 + 360) % 360;
+  return oklchToHex({ L, C, h });
+}
+
 /**
  * Colour maps (old → new, for `colorMap`) that put `brand` colours on a set of animations — one mapping for
  * all of them, so the stickers of a pack stay alike. Null when there is nothing to do (no brand colour).
@@ -231,11 +241,7 @@ export function brandColorMaps(anims: readonly LottieAnimation[], brand: readonl
     const f = of.get(hex);
     if (!f) continue;
     const to = targets[list.indexOf(f) % targets.length];
-    const c = hexToOklch(hex);
-    const L = Math.min(0.97, Math.max(0.12, to.L + (c.L - f.L)));
-    const C = Math.min(0.37, (c.C * to.C) / Math.max(f.C, 0.02));
-    const h = (to.h + (((c.h - familyHue(f) + 540) % 360) - 180) * 0.4 + 360) % 360;
-    mapped.set(hex, oklchToHex({ L, C, h }));
+    mapped.set(hex, shifted(hexToOklch(hex), { L: f.L, C: f.C, h: familyHue(f) }, to));
   }
   return anims.map((anim) => {
     const map: Record<string, string> = {};
@@ -245,4 +251,74 @@ export function brandColorMaps(anims: readonly LottieAnimation[], brand: readonl
     }
     return map;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Main colours of a pack
+// ---------------------------------------------------------------------------
+
+/** A main colour of a set of animations with its shades (one hue family, or blacks / whites / greys). */
+export interface ColorFamily {
+  /** The family's most used colour (stands for it). */
+  hex: string;
+  /** All its colours, as spelt in the files. */
+  colors: string[];
+  /** Share of the painted picture (0…1). */
+  share: number;
+  /** Lightness, chroma and hue of the family as a whole. */
+  L: number;
+  C: number;
+  h: number;
+}
+
+/** The main colours of the animations, biggest first: hue families, then blacks, greys and whites. */
+export function colorFamilies(anims: readonly LottieAnimation[], limit = 8): ColorFamily[] {
+  const total = new Map<string, number>();
+  for (const anim of anims) {
+    for (const [hex, w] of paletteWeights(anim)) total.set(hex, (total.get(hex) ?? 0) + w);
+    for (const hex of extractPalette(anim, Infinity)) if (!total.has(hex)) total.set(hex, 0);
+  }
+  const sum = [...total.values()].reduce((a, b) => a + b, 0) || 1;
+  const { list, of } = families(total);
+  const groups = new Map<unknown, { colors: Array<[string, number]>; L: number; C: number; h: number }>();
+  for (const f of list) groups.set(f, { colors: [], L: f.L, C: f.C, h: familyHue(f) });
+  // Neutrals by lightness: outlines, greys, highlights.
+  const neutral = (L: number) => (L < 0.4 ? 'dark' : L > 0.85 ? 'light' : 'grey');
+  for (const [hex, w] of total) {
+    const f = of.get(hex);
+    if (f) {
+      groups.get(f)!.colors.push([hex, w]);
+      continue;
+    }
+    const c = hexToOklch(hex);
+    const key = neutral(c.L);
+    if (!groups.has(key)) groups.set(key, { colors: [], L: 0, C: 0, h: 0 });
+    groups.get(key)!.colors.push([hex, w]);
+  }
+  const out: ColorFamily[] = [];
+  for (const [key, g] of groups) {
+    if (!g.colors.length) continue;
+    g.colors.sort((a, b) => b[1] - a[1]);
+    const weight = g.colors.reduce((a, [, w]) => a + w, 0);
+    let { L, C, h } = g;
+    if (typeof key === 'string') {
+      // A neutral group: its average lightness, no hue.
+      L = g.colors.reduce((a, [hex, w]) => a + hexToOklch(hex).L * (w || 1e-6), 0) / (weight || 1e-6 * g.colors.length);
+      C = 0;
+      h = 0;
+    }
+    out.push({ hex: g.colors[0][0], colors: g.colors.map(([hex]) => hex), share: weight / sum, L, C, h });
+  }
+  return out.sort((a, b) => b.share - a.share).slice(0, limit);
+}
+
+/** Colour map that turns `family` into `to`, every shade moved alike. */
+export function familyColorMap(family: ColorFamily, to: string): Record<string, string> {
+  const target = hexToOklch(to);
+  const map: Record<string, string> = {};
+  for (const hex of family.colors) {
+    // The colour that stands for the family becomes exactly the one picked.
+    map[hex] = hex === family.hex ? to.toLowerCase() : shifted(hexToOklch(hex), family, target);
+  }
+  return map;
 }

@@ -127,3 +127,25 @@ describe('brand colours', async () => {
     expect(paintBrandColors([{ type: 'solid', color: '#ffffff' }, { type: 'solid', color: '#0057b7' }, { type: 'solid', color: '#ffd700' }])).toEqual(['#0057b7', '#ffd700']);
   });
 });
+
+describe('main colours of a pack', async () => {
+  const { colorFamilies, familyColorMap, hexToOklch } = await import('../lottie/brand');
+  const shape = (w: number, rgb: number[]): ShapeItem => ({ ty: 'gr', it: [{ ty: 'el', p: st([0, 0]), s: st([w, w]) }, fill(rgb), tr()] });
+  const sticker = (k: number) => anim([layer(1, 'A', [shape(30, [1, 1, 1]), shape(50 * k, [0.72, 0.16, 0.24]), shape(200 * k, [0.9, 0.22, 0.31]), shape(60, [0.1, 0.5, 0.95]), shape(220 * k, [0.05, 0.05, 0.05])])]);
+
+  it('lists hue families with their shades, and blacks / whites apart', () => {
+    const families = colorFamilies([sticker(1), sticker(1.2)]);
+    const red = families.find((f) => f.colors.length === 2)!;
+    expect(red.colors.sort()).toEqual(['#b8293d', '#e6384f'].sort());
+    expect(red.hex).toBe('#e6384f');
+    expect(families.map((f) => f.hex)).toEqual(expect.arrayContaining(['#0d0d0d', '#ffffff', '#1a80f2']));
+    expect(families[0].share).toBeGreaterThan(families[families.length - 1].share);
+  });
+
+  it('turns a family into the picked colour, the shade keeping its step', () => {
+    const red = colorFamilies([sticker(1)]).find((f) => f.hex === '#e6384f')!;
+    const map = familyColorMap(red, '#22aa55');
+    expect(map['#e6384f']).toBe('#22aa55');
+    expect(hexToOklch(map['#b8293d']).L).toBeLessThan(hexToOklch('#22aa55').L);
+  });
+});

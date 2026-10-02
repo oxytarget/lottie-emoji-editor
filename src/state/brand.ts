@@ -1,4 +1,4 @@
-import { artBrandColors, brandColorMaps, paintBrandColors } from '../lottie/brand';
+import { artBrandColors, brandColorMaps, familyColorMap, paintBrandColors, type ColorFamily } from '../lottie/brand';
 import { logoArt } from './logoArt';
 import { packEditOf, useEditor } from './store';
 
@@ -38,4 +38,26 @@ export function brandImports(ids: readonly string[], source: BrandSource | null)
   });
   useEditor.setState({ imports: next, packEdits: edits });
   return targets.length;
+}
+
+/**
+ * One main colour of a pack changed in all its stickers (`to` = null: back to the file's colours). The
+ * family's shades move along, so shadows and highlights stay.
+ */
+export function recolorFamily(ids: readonly string[], family: ColorFamily, to: string | null): void {
+  const { imports, packEdits } = useEditor.getState();
+  const map = to ? familyColorMap(family, to) : null;
+  const edits = { ...packEdits };
+  const next = imports.map((t) => {
+    if (!ids.includes(t.id)) return t;
+    const colorMap = { ...t.colorMap };
+    for (const hex of family.colors) {
+      if (map && map[hex] !== hex) colorMap[hex] = map[hex];
+      else delete colorMap[hex];
+    }
+    const updated = { ...t, colorMap };
+    if (updated.source) edits[updated.source.uid] = packEditOf(updated);
+    return updated;
+  });
+  useEditor.setState({ imports: next, packEdits: edits });
 }

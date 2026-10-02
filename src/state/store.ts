@@ -102,6 +102,8 @@ export interface EditorData {
   theme: Theme | null;
   /** New packs come in the colours of the user's logo/text (when it has colourful ones). */
   autoBrand: boolean;
+  /** The "main colours of the whole pack" section is open. */
+  packColors: boolean;
   /** Saved states of the work, newest first. */
   drafts: Draft[];
   mode: 'text' | 'logo';
@@ -204,6 +206,7 @@ export const initialData = (): EditorData => ({
   lang: detectLang(),
   theme: null,
   autoBrand: true,
+  packColors: false,
   drafts: [],
   mode: 'text',
   text: 'EMOJI',
@@ -503,7 +506,7 @@ export const useEditor = create<EditorData & EditorActions>()(
       deleteDraft: (id) => set({ drafts: get().drafts.filter((d) => d.id !== id) }),
       renameDraft: (id, name) => set({ drafts: get().drafts.map((d) => (d.id === id ? { ...d, name: name.trim() || d.name } : d)) }),
       reset: () => {
-        const { lang, theme, autoBrand, drafts, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
+        const { lang, theme, autoBrand, packColors, drafts, packs, myPacks, imports, favColors, favLogos, userPresets, packJob, layoutSvgs } = get();
         const stickers = imports
           .filter((t) => t.source)
           .map((t) => {
@@ -511,7 +514,7 @@ export const useEditor = create<EditorData & EditorActions>()(
             const data = layout.length ? applyLayout(t.base, layout, () => null) : t.base;
             return { ...t, data, layout, palette: extractPalette(data), colorMap: {}, paints: {}, transforms: {}, ...picked };
           });
-        set({ ...initialData(), lang, theme, autoBrand, drafts, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
+        set({ ...initialData(), lang, theme, autoBrand, packColors, drafts, packs, myPacks, imports: stickers, favColors, favLogos, userPresets, packJob, layoutSvgs });
       },
     }),
     {

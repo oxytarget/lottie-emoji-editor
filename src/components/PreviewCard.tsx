@@ -19,7 +19,8 @@ import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
 import { CheckIcon, CloseIcon, GrabIcon, PaletteIcon, PauseIcon, PlayIcon, ResetIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
-import { brandColors, brandImports, type BrandSource } from '../state/brand';
+import { brandColors, brandImports, recolorFamily, type BrandSource } from '../state/brand';
+import { colorFamilies } from '../lottie/brand';
 import { deleteSelection } from '../state/editCommands';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
@@ -148,6 +149,49 @@ function AutoBrand({ imp }: { imp: ImportedTemplate }) {
   );
 }
 
+/**
+ * "Main colours of the whole pack": a switch that opens the pack's main colours (with their shades, across
+ * all its stickers); picking a new one recolours it everywhere at once.
+ */
+function PackColors({ imp }: { imp: ImportedTemplate }) {
+  const t = useT();
+  const on = useEditor((s) => s.packColors);
+  const set = useEditor((s) => s.set);
+  const pack = imp.source?.pack;
+  const ids = useEditor((s) => s.imports.filter((i) => (pack ? i.source?.pack === pack : i.id === imp.id)).map((i) => i.id).join(','));
+  const families = useMemo(() => {
+    if (!on) return [];
+    const list = ids.split(',');
+    return colorFamilies(useEditor.getState().imports.filter((i) => list.includes(i.id)).map((i) => i.base));
+  }, [on, ids]);
+  return (
+    <section className={`pack-colors${on ? ' is-on' : ''}`}>
+      <Toggle label={t(pack ? 'packColorsToggle' : 'fileColorsToggle')} checked={on} onChange={(v) => set('packColors', v)} />
+      {on && (
+        <>
+          <p className="hint">{t('packColorsHint')}</p>
+          <div className="pack-colors-grid">
+            {families.map((f, i) => {
+              const changed = imp.colorMap[f.hex] !== undefined || useEditor.getState().imports.some((x) => ids.includes(x.id) && x.colorMap[f.hex] !== undefined);
+              return (
+                <div key={f.hex} className="pack-color">
+                  <ColorSwatch color={imp.colorMap[f.hex] ?? f.hex} label={`${t('packColorName')} ${i + 1}`} onChange={(hex) => recolorFamily(ids.split(','), f, hex)} />
+                  <span className="pack-color-share">{Math.max(1, Math.round(f.share * 100))}%</span>
+                  {changed && (
+                    <button type="button" className="icon-btn is-small" title={t('packColorReset')} aria-label={`${t('packColorReset')} ${i + 1}`} onClick={() => recolorFamily(ids.split(','), f, null)}>
+                      <ResetIcon width={14} height={14} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function ImportedPanel({ id }: { id: string }) {
   const t = useT();
   const imp = useEditor((s) => s.imports.find((i) => i.id === id));
@@ -168,6 +212,7 @@ export function ImportedPanel({ id }: { id: string }) {
         </p>
       )}
       <AutoBrand imp={imp} />
+      <PackColors imp={imp} />
       <SyncBar imp={imp} />
       <PartsPanel key={imp.id} imp={imp} />
       <h3 className="section-title">{t('importedPalette')}</h3>
