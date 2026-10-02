@@ -16,7 +16,7 @@ import { haptic, useBackButton, useMainButton } from './lib/telegram';
 import { THEME_COLORS, useApplyTheme, useSystemTheme } from './lib/theme';
 import { openPack } from './state/packs';
 import { useEditor } from './state/store';
-import { useUi, type Tab } from './state/ui';
+import { useUi, type Section, type Tab } from './state/ui';
 import { useCompiled } from './state/useCompiled';
 import { useT } from './state/useT';
 
@@ -121,24 +121,7 @@ function usePackBootstrap() {
   }, []);
 }
 
-/** A sparkle in the studio's violet gradient. */
-function BrandMark() {
-  return (
-    <span className="brand-mark" aria-hidden>
-      <svg viewBox="0 0 40 40">
-        <defs>
-          <linearGradient id="brand-grad" x1="0.15" y1="0" x2="0.85" y2="1">
-            <stop offset="0" stopColor="#c4b5fd" />
-            <stop offset="0.5" stopColor="#8b5cf6" />
-            <stop offset="1" stopColor="#6d28d9" />
-          </linearGradient>
-        </defs>
-        <path d="M18 4c1.3 8.6 5.4 12.7 14 14-8.6 1.3-12.7 5.4-14 14-1.3-8.6-5.4-12.7-14-14 8.6-1.3 12.7-5.4 14-14Z" fill="url(#brand-grad)" />
-        <path d="M32 2.5c.5 3 1.9 4.4 4.9 4.9-3 .5-4.4 1.9-4.9 4.9-.5-3-1.9-4.4-4.9-4.9 3-.5 4.4-1.9 4.9-4.9Z" fill="#a78bfa" />
-      </svg>
-    </span>
-  );
-}
+const SECTION_TITLES: Record<Section, I18nKey> = { create: 'navCreate', studio: 'navStudio', drafts: 'navDrafts', profile: 'navProfile' };
 
 export default function App() {
   const t = useT();
@@ -188,13 +171,8 @@ export default function App() {
   return (
     <div className={`app${nativeButton ? ' has-native-button' : ''}${painting ? ' is-painting' : ''}`} ref={appRef}>
       <header className="topbar">
-        <div className="brand">
-          <BrandMark />
-          <div>
-            <h1>{t('appTitle')}</h1>
-            <p>{t('appSubtitle')}</p>
-          </div>
-        </div>
+        {/* Phones: where you are; wide screens show the section bar instead. */}
+        <h1 className="topbar-title">{t(SECTION_TITLES[section])}</h1>
         <SectionNav />
         <button type="button" className="selected-chip" onClick={() => goTo('create')} title={t('selectedChip')}>
           <StickersIcon width={16} height={16} />

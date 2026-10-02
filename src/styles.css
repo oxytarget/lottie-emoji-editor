@@ -202,43 +202,26 @@ p {
   border-bottom: 1px solid var(--line);
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex: none;
-  filter: drop-shadow(0 4px 10px rgba(124, 58, 237, 0.35));
-}
-
-.brand-mark svg {
-  width: 100%;
-  height: 100%;
-}
-
-.brand h1 {
-  font-size: 20px;
+.topbar-title {
+  font-size: 22px;
   font-weight: 900;
   letter-spacing: -0.01em;
-  white-space: nowrap;
 }
 
-.brand p {
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 700;
+@media (min-width: 960px) {
+  .topbar-title {
+    display: none;
+  }
 }
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Phones: the header already names the section, the page keeps its line under it. */
+@media (max-width: 959px) {
+  .page-head h2 {
+    display: none;
+  }
+  .page-head p {
+    margin-top: 0;
+  }
 }
 
 .lang-switch {
@@ -441,16 +424,6 @@ p {
     margin-bottom: 12px;
     padding-top: 8px;
     padding-bottom: 8px;
-  }
-  .brand {
-    gap: 8px;
-    min-width: 0;
-  }
-  .brand h1 {
-    font-size: 18px;
-  }
-  .brand p {
-    display: none;
   }
 }
 
@@ -3861,10 +3834,6 @@ button.part-expand::after {
   animation: float 2.6s ease-in-out infinite;
 }
 
-.brand-mark {
-  animation: float 3.2s ease-in-out infinite;
-}
-
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
@@ -4488,6 +4457,7 @@ img.part-thumb-anim {
 
 /* The number of chosen emoji, at the top right (like a balance). */
 .selected-chip {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;

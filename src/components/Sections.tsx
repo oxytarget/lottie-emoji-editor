@@ -8,14 +8,14 @@ import { useUi, type Section } from '../state/ui';
 import { useT } from '../state/useT';
 import type { Lang } from '../templates/types';
 import { Toggle } from './controls';
-import { DraftIcon, GlobeIcon, MoonIcon, PenIcon, ResetIcon, SaveIcon, SparkleIcon, StickersIcon, SunIcon, TrashIcon, UserIcon } from './icons';
+import { DraftIcon, GlobeIcon, GridIcon, MoonIcon, PenIcon, ResetIcon, SaveIcon, StickersIcon, SunIcon, TrashIcon, UserIcon } from './icons';
 import { PackForm } from './TemplateGrid';
 
 const LANGS: Lang[] = ['uk', 'ru', 'en'];
 
 const NAV: Array<{ value: Section; key: I18nKey; icon: ReactNode }> = [
   { value: 'create', key: 'navCreate', icon: <PenIcon /> },
-  { value: 'studio', key: 'navStudio', icon: <SparkleIcon /> },
+  { value: 'studio', key: 'navStudio', icon: <GridIcon /> },
   { value: 'drafts', key: 'navDrafts', icon: <DraftIcon /> },
   { value: 'profile', key: 'navProfile', icon: <UserIcon /> },
 ];
@@ -231,7 +231,7 @@ export function StudioPage() {
         <ul className="studio-list">
           <li>
             <span className="studio-icon">
-              <SparkleIcon width={20} height={20} />
+              <GridIcon width={20} height={20} />
             </span>
             <span className="studio-title">
               <strong>{t('studioBuiltin')}</strong>

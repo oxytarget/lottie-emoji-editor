@@ -7,7 +7,7 @@ import { useEditor } from '../state/store';
 import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { MotionButton, Segmented, Toggle } from './controls';
-import { CheckIcon, CloseIcon, DownloadIcon, SendIcon, SparkleIcon, WarningIcon } from './icons';
+import { CheckIcon, CloseIcon, DownloadIcon, SendIcon, StickersIcon, WarningIcon } from './icons';
 import { LottieView } from './LottieView';
 import { emojiName } from './TemplateGrid';
 
@@ -305,7 +305,7 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
               </p>
             )}
             <button type="button" className="primary-btn" disabled={!!busy || overLimit || tooBig || !packPending.length} onClick={runPack}>
-              {busy === 'pack' ? <span className="btn-spinner" aria-hidden /> : <SparkleIcon />}
+              {busy === 'pack' ? <span className="btn-spinner" aria-hidden /> : <StickersIcon />}
               {busy === 'pack'
                 ? `${t('packCreating')} ${progressLabel(progress)}`
                 : `${packResume ? t('packContinue') : splitting ? fill(t('packCreateSplit'), { n: Math.ceil(emojis.length / CREATE_BATCH) }) : targetPack ? t('packAdd') : t('packCreate')} (${packPending.length})`}

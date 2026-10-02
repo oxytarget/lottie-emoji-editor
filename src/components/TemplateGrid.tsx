@@ -11,7 +11,7 @@ import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import type { Localized } from '../templates/types';
 import { MotionButton } from './controls';
-import { CheckIcon, ChevronIcon, PlusIcon, SparkleIcon, StickersIcon, TrashIcon } from './icons';
+import { CheckIcon, ChevronIcon, GridIcon, PlusIcon, StickersIcon, TrashIcon } from './icons';
 import { usePoster } from '../state/posters';
 import { LottieView, useInView } from './LottieView';
 import { usePresence } from './motion';
@@ -248,7 +248,7 @@ function BuiltinPack({ main }: { main: CompiledEmoji[] }) {
     <div className={`pack-section is-builtin${open ? ' is-open' : ''}`} id="pack-builtin">
       <div className="pack-head">
         <button type="button" className="pack-toggle" aria-expanded={open} onClick={() => setOpen('@builtin', !open)}>
-          <SparkleIcon width={20} height={20} />
+          <GridIcon width={20} height={20} />
           <span className="pack-title">
             <strong>{t('characters')}</strong>
             <span className="hint">

@@ -18,7 +18,7 @@ import type { CompiledEmoji } from '../state/useCompiled';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
-import { CheckIcon, CloseIcon, GrabIcon, PauseIcon, PlayIcon, ResetIcon, SparkleIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
+import { CheckIcon, CloseIcon, GrabIcon, PaletteIcon, PauseIcon, PlayIcon, ResetIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
 import { brandColors, brandImports, type BrandSource } from '../state/brand';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
@@ -120,7 +120,7 @@ function AutoBrand({ imp }: { imp: ImportedTemplate }) {
   return (
     <section className="auto-brand">
       <h3 className="auto-brand-title">
-        <SparkleIcon width={16} height={16} /> {t('autoBrandTitle')}
+        <PaletteIcon width={16} height={16} /> {t('autoBrandTitle')}
       </h3>
       {pack && (
         <p className="hint">{found ? t('autoBrandLogo').replace('{n}', String(found)).replace('{total}', String(total)) : t('autoBrandNoLogo')}</p>
