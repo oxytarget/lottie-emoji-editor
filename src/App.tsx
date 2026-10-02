@@ -4,11 +4,14 @@ import { ContentCard } from './components/ContentCard';
 import { ExportSheet } from './components/ExportSheet';
 import { MotionButton } from './components/controls';
 import { Segmented } from './components/controls';
-import { DownloadIcon, GridIcon, LayersIcon, PaletteIcon, StickersIcon, TypeIcon } from './components/icons';
+import { DownloadIcon, GridIcon, LayersIcon, PaletteIcon, StickersIcon, TypeIcon, UndoIcon } from './components/icons';
 import { Bump, usePresence } from './components/motion';
 import { FavColorBar, PaintBanner } from './components/FavColors';
 import { ImportedPanel, PreviewCard } from './components/PreviewCard';
 import { DraftsPage, goTo, ProfilePage, SaveDraftButton, SectionNav, StudioPage } from './components/Sections';
+import { Toast, useHotkeys } from './components/Hotkeys';
+import { undo } from './state/history';
+import { translate } from './i18n';
 import { TemplateGrid } from './components/TemplateGrid';
 import type { I18nKey } from './i18n';
 import { fetchBotPacks, packsAvailable } from './lib/botApi';
@@ -143,6 +146,7 @@ export default function App() {
   const selected = useEditor((s) => s.selected);
   const active = useEditor((s) => s.active);
   const section = useUi((u) => u.section);
+  useHotkeys();
   const [exportOpen, setExportOpen] = useState(false);
   const sheet = usePresence(exportOpen, 260);
   const closeExport = useCallback(() => setExportOpen(false), []);
@@ -207,6 +211,15 @@ export default function App() {
 
       {section === 'create' && (
         <div className={`bottom-bar${nativeButton ? ' is-native' : ''}`}>
+          <button
+            type="button"
+            className="icon-btn is-round draft-quick"
+            title={`${t('undo')} (Ctrl+Z)`}
+            aria-label={t('undo')}
+            onClick={() => useUi.getState().showToast(translate(useEditor.getState().lang, undo() ? 'undone' : 'nothingToUndo'))}
+          >
+            <UndoIcon width={20} height={20} />
+          </button>
           <SaveDraftButton json={activeEmoji?.json} className="icon-btn is-round draft-quick" />
           {!nativeButton && (
             <MotionButton motion="drop" className="primary-btn" label={t('download')} icon={<DownloadIcon />} disabled={selectedEmojis.length === 0} onClick={() => setExportOpen(true)}>
@@ -219,6 +232,7 @@ export default function App() {
       )}
 
       <PaintBanner />
+      <Toast />
       {sheet.mounted && <ExportSheet emojis={selectedEmojis} onClose={closeExport} state={sheet.state} />}
     </div>
   );

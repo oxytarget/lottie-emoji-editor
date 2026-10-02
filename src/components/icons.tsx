@@ -277,3 +277,22 @@ export const SaveIcon = (p: P) => (
     <path d="M17 21v-8H7v8M7 3v5h8" />
   </svg>
 );
+export const UndoIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </svg>
+);
+export const CopyIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="9" y="9" width="12" height="12" rx="2.5" />
+    <path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5" />
+  </svg>
+);
+export const PasteIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9 4h6v3H9z" />
+    <path d="M15 5h2.5A1.5 1.5 0 0 1 19 6.5v13a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-13A1.5 1.5 0 0 1 6.5 5H9" />
+    <path d="M12 11v6M9 14l3 3 3-3" />
+  </svg>
+);

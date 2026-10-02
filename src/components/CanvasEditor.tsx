@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
 import { LockIcon, UnlockIcon } from './icons';
 
@@ -29,6 +30,8 @@ interface Props {
   /** Proportions locked: corners resize evenly; unlocked: corners and edges stretch freely. */
   locked: boolean;
   onToggleLock(): void;
+  /** The × next to the handles (and the Delete key): removes what the frame is around. */
+  onDelete?(): void;
 }
 
 type Mode = 'move' | 'scale' | 'rotate' | 'pinch' | 'scroll' | 'stretch';
@@ -92,13 +95,18 @@ const mid = (pts: { x: number; y: number }[]) => ({ x: (pts[0].x + pts[1].x) / 2
  * Selection box over the user's text/logo: drag to move, corner handles to resize, top handle to rotate,
  * two fingers to pinch/rotate, mouse wheel to resize, arrow keys to nudge.
  */
-export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive, onPick, locked, onToggleLock }: Props) {
+export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive, onPick, locked, onToggleLock, onDelete }: Props) {
   const t = useT();
   const boxRef = useRef<HTMLDivElement>(null);
   const lockRef = useRef<HTMLButtonElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const latest = useRef(value);
   const [selected, setSelected] = useState(false);
+  // The Delete key acts on the selected frame (see editCommands).
+  useEffect(() => {
+    useUi.getState().setCanvasSelected(selected);
+  }, [selected]);
+  useEffect(() => () => useUi.getState().setCanvasSelected(false), []);
   const [active, setActive] = useState(false);
   const wheelTimer = useRef<number | undefined>(undefined);
   latest.current = gesture.current ? latest.current : value;
@@ -451,6 +459,23 @@ export function CanvasEditor({ stage, target, value, onLive, onCommit, onActive,
             <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" />
           </svg>
         </span>
+        {onDelete && (
+          <button
+            type="button"
+            className="canvas-delete"
+            title={`${t('canvasDelete')} (Delete)`}
+            aria-label={t('canvasDelete')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ import { ColorSwatch } from './ColorSwatch';
 import { Toggle } from './controls';
 import { CheckIcon, CloseIcon, GrabIcon, PaletteIcon, PauseIcon, PlayIcon, ResetIcon, StarIcon, TrashIcon, WarningIcon } from './icons';
 import { brandColors, brandImports, type BrandSource } from '../state/brand';
+import { deleteSelection } from '../state/editCommands';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
 import { emojiName } from './TemplateGrid';
@@ -561,6 +562,7 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
                 setRatioLock(!ratioLock);
                 haptic();
               }}
+              onDelete={() => deleteSelection(true)}
             />
             {itemInfo && itemPaint && (
               <GradientEditor

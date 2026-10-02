@@ -2219,7 +2219,39 @@ button.part-expand::after {
   touch-action: none;
 }
 
+/* Delete: a round × above the top-right corner, next to the rotation handle. */
+.canvas-delete {
+  position: absolute;
+  right: -13px;
+  top: -40px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--danger);
+  border: 2px solid color-mix(in srgb, var(--danger) 70%, #fff);
+  box-shadow: 0 2px 6px rgba(20, 10, 60, 0.3);
+  opacity: 0;
+  transform: scale(0.4);
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.canvas-box:hover .canvas-delete,
+.canvas-box.is-selected .canvas-delete {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.canvas-delete:active {
+  transform: scale(0.9);
+}
+
 /* Bigger invisible hit area for fingers. */
+.canvas-delete::after,
 .canvas-handle::after,
 .canvas-rotate::after {
   content: '';
@@ -4751,4 +4783,41 @@ img.part-thumb-anim {
 .add-tiles .tile-import svg {
   width: 24px;
   height: 24px;
+}
+
+/* Short messages (copied, pasted, undone…) */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 60;
+  max-width: min(92vw, 460px);
+  padding: 10px 18px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--text) 92%, transparent);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  animation: toast-in 0.28s var(--ease-out, ease) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+}
+
+@media (max-width: 959px) {
+  .toast {
+    bottom: calc(var(--nav-h) + 80px + env(safe-area-inset-bottom));
+  }
+}
+
+.parts-panel .subcard-head {
+  flex-wrap: wrap;
+  gap: 8px;
 }

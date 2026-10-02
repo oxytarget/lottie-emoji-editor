@@ -12,6 +12,7 @@ import { flattenParts, listParts, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import type { ColorRole, EmojiColors, Lang } from '../templates/types';
 import { applyImportOp, applyImportOpTo, type ImportOp } from './importOps';
+import { parseFragment } from '../lottie/fragment';
 import { logoArt, svgKey } from './logoArt';
 import { PRESETS, randomEmojiColors, randomTextColors, type ColorPreset } from './presets';
 
@@ -329,7 +330,7 @@ export const useEditor = create<EditorData & EditorActions>()(
         const t = imports.find((i) => i.id === id);
         if (!t || checkOp(t.data, op)) return null;
         const data = structuredClone(t.data);
-        const newId = applyLayoutOp(data, op, (key) => logoArt(layoutSvgs[key]));
+        const newId = applyLayoutOp(data, op, (key) => logoArt(layoutSvgs[key]), (key) => parseFragment(layoutSvgs[key]));
         if (newId === null && op.kind !== 'remove') return null;
         const { hidden, replace, transforms, paints } = remapEdits({ hidden: t.hidden, replace: t.replace, transforms: t.transforms, paints: t.paints ?? {} }, op, t.data);
         const updated: ImportedTemplate = {

@@ -1,4 +1,5 @@
 import { artToShapes, fitArt, type VectorArt } from '../content/art';
+import { fragmentLayer, type LottieFragment } from './fragment';
 import { solid } from './paint';
 import { assetsOf, FOLLOW_MN, INSERTED, isCanvasFrame, itemsBounds, resolvePart, shapeList, SLOT_MN, type AnyLayer } from './parts';
 import { stat } from './anim';
@@ -29,8 +30,12 @@ export interface RunRef {
 }
 
 export type LayoutOp =
-  /** `follow`: a slot in place of a logo drawn by these items (their box, their motion) — see `slotForRun`. */
-  | { kind: 'insert'; svg: string; name: string; at: Drop; follow?: RunRef }
+  /**
+   * `follow`: a slot in place of a logo drawn by these items (their box, their motion) — see `slotForRun`.
+   * `fragment`: `svg` is the key of a copied layer (see fragment.ts), pasted as a precomp layer; the value
+   * renames its assets.
+   */
+  | { kind: 'insert'; svg: string; name: string; at: Drop; follow?: RunRef; fragment?: string }
   | { kind: 'move'; part: string; at: Drop }
   | { kind: 'remove'; part: string };
 
@@ -282,7 +287,11 @@ export function removalTarget(anim: LottieAnimation, id: string): string {
 
 /** Why an operation cannot be applied (the UI does not offer such drops). */
 export function checkOp(anim: LottieAnimation, op: LayoutOp): string | null {
-  if (op.kind === 'insert') return childList(anim, op.at.parent) ? null : 'no-container';
+  if (op.kind === 'insert') {
+    const list = childList(anim, op.at.parent);
+    if (!list) return 'no-container';
+    return op.fragment && list.kind !== 'layers' ? 'not-layers' : null;
+  }
   const source = resolvePart(anim, op.part);
   if (!source) return 'no-part';
   if (op.kind === 'remove') return null;
@@ -304,8 +313,23 @@ export function checkOp(anim: LottieAnimation, op: LayoutOp): string | null {
  * Applies one operation to `anim` (mutated — pass a copy). `svgArt` turns an inserted logo's SVG into
  * vector art. Returns the new id of the inserted/moved part, or null when nothing was done.
  */
-export function applyLayoutOp(anim: LottieAnimation, op: LayoutOp, svgArt: (svg: string) => VectorArt | null): string | null {
+export function applyLayoutOp(
+  anim: LottieAnimation,
+  op: LayoutOp,
+  svgArt: (svg: string) => VectorArt | null,
+  fragmentOf: (key: string) => LottieFragment | null = () => null,
+): string | null {
   if (checkOp(anim, op)) return null;
+  if (op.kind === 'insert' && op.fragment) {
+    const f = fragmentOf(op.svg);
+    const ref = childList(anim, op.at.parent)!;
+    if (!f) return null;
+    const at = insertIndex(ref, op.at.index);
+    const { layer, assets } = fragmentLayer(f, op.fragment, nextInd(ref.list as AnyLayer[]), ref.ip ?? anim.ip, ref.op ?? anim.op, op.name);
+    anim.assets = [...(anim.assets ?? []), ...(assets as unknown as NonNullable<LottieAnimation['assets']>)];
+    ref.list.splice(at, 0, layer);
+    return formatId([...parseId(op.at.parent), childToken(ref.kind, op.at.parent, at)]);
+  }
   if (op.kind === 'insert') {
     const slot = op.svg === CONTENT_SLOT;
     const art = slot ? null : svgArt(op.svg);
@@ -373,10 +397,15 @@ export function applyLayoutOp(anim: LottieAnimation, op: LayoutOp, svgArt: (svg:
 }
 
 /** Replays operations on a copy of the original animation. */
-export function applyLayout(base: LottieAnimation, ops: readonly LayoutOp[], svgArt: (svg: string) => VectorArt | null): LottieAnimation {
+export function applyLayout(
+  base: LottieAnimation,
+  ops: readonly LayoutOp[],
+  svgArt: (svg: string) => VectorArt | null,
+  fragmentOf?: (key: string) => LottieFragment | null,
+): LottieAnimation {
   if (!ops.length) return base;
   const copy = structuredClone(base);
-  for (const op of ops) applyLayoutOp(copy, op, svgArt);
+  for (const op of ops) applyLayoutOp(copy, op, svgArt, fragmentOf);
   return copy;
 }
 

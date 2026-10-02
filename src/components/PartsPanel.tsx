@@ -7,7 +7,8 @@ import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
 import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { CheckIcon, ChevronIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ImageIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, TypeIcon, WarningIcon } from './icons';
+import { CheckIcon, ChevronIcon, CopyIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ImageIcon, PasteIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, TypeIcon, WarningIcon } from './icons';
+import { copyToClipboard, pasteFromClipboard } from '../state/editCommands';
 import { applyLayerOp, DragGhost, FavLogoStrip, useLayerDnd, type DragSource } from './LayerDnd';
 import { checkOp, INSERTED, parentOf, removalTarget, rootOf, type Drop } from '../lottie/layout';
 import { MotionButton, Slider } from './controls';
@@ -124,6 +125,17 @@ function LayerMoves({ imp, part, flat }: { imp: ImportedTemplate; part: Part; fl
   const ok = (drop: Drop | null) => !!drop && !checkOp(imp.data, { kind: 'move', part: part.id, at: drop });
   return (
     <div className="row-actions layer-moves">
+      <button
+        type="button"
+        className="pill-btn is-compact"
+        title={`${t('layerCopy')} (Ctrl+C)`}
+        onClick={() => {
+          useUi.getState().setGrab({ id: imp.id, part: part.id });
+          copyToClipboard();
+        }}
+      >
+        <CopyIcon width={16} height={16} /> {t('layerCopy')}
+      </button>
       <button type="button" className="pill-btn is-compact" disabled={!ok(upDrop)} onClick={() => move(upDrop)}>
         ↑ {t('layerUp')}
       </button>
@@ -373,11 +385,16 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
     <div className="parts-panel">
       <div className="subcard-head">
         <h3 className="section-title">{t('partsTitle')}</h3>
-        {edited && !atDefaults && (
-          <button type="button" className="pill-btn is-compact" onClick={resetParts}>
-            <ResetIcon width={16} height={16} /> {t('partsReset')}
+        <div className="row-actions">
+          <button type="button" className="pill-btn is-compact" title={`${t('layerPaste')} (Ctrl+V)`} onClick={() => pasteFromClipboard()}>
+            <PasteIcon width={16} height={16} /> {t('layerPaste')}
           </button>
-        )}
+          {edited && !atDefaults && (
+            <button type="button" className="pill-btn is-compact" onClick={resetParts}>
+              <ResetIcon width={16} height={16} /> {t('partsReset')}
+            </button>
+          )}
+        </div>
       </div>
 
       {suggestion && (

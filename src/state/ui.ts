@@ -23,6 +23,12 @@ interface UiState {
   /** Pack sticker tiles currently on screen (only those, plus selected ones, are compiled). */
   visible: ReadonlySet<string>;
   setVisible(id: string, visible: boolean): void;
+  /** The text/logo frame on the canvas is selected (Delete removes it). */
+  canvasSelected: boolean;
+  setCanvasSelected(selected: boolean): void;
+  /** A short message at the bottom (copied, pasted, undone…). */
+  toast: { text: string; n: number } | null;
+  showToast(text: string): void;
   /** Part grabbed on the canvas / in the parts list. */
   grab: { id: string; part: string } | null;
   setGrab(grab: { id: string; part: string } | null): void;
@@ -78,6 +84,10 @@ export const useUi = create<UiState>()((set, get) => ({
       if (next.size !== current.size || [...next].some((key) => !current.has(key))) set({ visible: next });
     }, 120);
   },
+  canvasSelected: false,
+  setCanvasSelected: (canvasSelected) => set({ canvasSelected }),
+  toast: null,
+  showToast: (text) => set({ toast: { text, n: (get().toast?.n ?? 0) + 1 } }),
   grab: null,
   setGrab: (grab) => set({ grab }),
   packStatus: {},

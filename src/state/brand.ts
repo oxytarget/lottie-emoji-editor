@@ -13,7 +13,8 @@ export function brandColors(source: BrandSource): string[] {
     const art = logoArt(s.logo.svg);
     if (art) return artBrandColors(art);
   }
-  return paintBrandColors([s.textFill, s.textOutline]);
+  // The text's fill only: its outline is a dark stroke, not a brand colour.
+  return paintBrandColors([s.textFill]);
 }
 
 /**
