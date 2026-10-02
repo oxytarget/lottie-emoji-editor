@@ -453,10 +453,12 @@ const dict = {
     en: 'Telegram adds emoji one by one and dislikes haste, so I pause between them. You can close the app — progress is saved; press “Add the rest” later.',
   },
   packWaitHint: {
-    uk: 'Це обмеження Telegram, його не обійти — після паузи продовжу сам і далі піду повільніше. Можна закрити застосунок і повернутися пізніше: прогрес збережено.',
-    ru: 'Это ограничение Telegram, его не обойти — после паузы продолжу сам и дальше пойду медленнее. Можно закрыть приложение и вернуться позже: прогресс сохранён.',
-    en: 'This is Telegram’s limit and cannot be skipped — I will continue after the pause, more slowly. You can close the app and come back later: progress is saved.',
+    uk: 'Telegram дозволяє додати лише певну кількість емодзі за кілька хвилин. Дочекаюся й продовжу сам — нічого не задвоїться. Можна закрити редактор: прогрес збережено, «Додати решту» продовжить після паузи.',
+    ru: 'Telegram разрешает добавить только определённое число эмодзи за несколько минут. Дождусь и продолжу сам — ничего не задвоится. Можно закрыть редактор: прогресс сохранён, «Добавить остальные» продолжит после паузы.',
+    en: 'Telegram allows only so many emoji per few minutes. I will wait and go on by myself — nothing gets added twice. You can close the editor: progress is saved, “Add the rest” continues after the pause.',
   },
+  packStop: { uk: 'Зупинити', ru: 'Остановить', en: 'Stop' },
+  packStopped: { uk: 'Зупинено.', ru: 'Остановлено.', en: 'Stopped.' },
   packResumeHint: {
     uk: 'Цей пак ще не дороблено: у ньому вже {done} з {total}. Натисніть «Додати решту».',
     ru: 'Этот пак ещё не доделан: в нём уже {done} из {total}. Нажмите «Добавить остальные».',

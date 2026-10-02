@@ -253,3 +253,127 @@ describe('big packs (several requests)', () => {
     expect(calls.filter((c) => c.method === 'addStickerToSet')).toHaveLength(3);
   });
 });
+
+describe('repeat-safe pack requests (Telegram limits, lost answers)', () => {
+  const ownSet = 'e1_abcde_by_Test_Emoji_bot';
+
+  /** A pack on the fake Telegram: additions land in it; `fail(n)` can answer the n-th addition with an error (it may still land). */
+  function fakePack(opts: { size?: number; emojis?: string[]; fail?: (n: number) => { land: boolean; error: { error_code: number; description: string; parameters?: { retry_after?: number } } } | null; createFail?: (n: number) => { land: boolean; error: { error_code: number; description: string } } | null } = {}) {
+    const stickers: string[] = [...(opts.emojis ?? Array(opts.size ?? 0).fill('🔥'))];
+    let created: string | null = null;
+    const calls = mockTelegram((method, n) => {
+      if (method === 'getStickerSet') return created || stickers.length ? { ok: true, result: { stickers: stickers.map((emoji) => ({ emoji })) } } : { ok: false, error_code: 400, description: 'Bad Request: STICKERSET_INVALID' };
+      if (method === 'addStickerToSet') {
+        const f = opts.fail?.(n);
+        if (!f || f.land) stickers.push('🔥');
+        return f ? { ok: false, ...f.error } : { ok: true, result: true };
+      }
+      if (method === 'createNewStickerSet') {
+        const f = opts.createFail?.(n);
+        if (created && (!f || f.land)) return { ok: false, error_code: 400, description: 'Bad Request: sticker set name is already occupied' };
+        if (!f || f.land) {
+          created = 'yes';
+          stickers.push('🔥', '🔥');
+        }
+        return f ? { ok: false, ...f.error } : { ok: true, result: true };
+      }
+      return { ok: true, result: true };
+    });
+    return { calls, stickers };
+  }
+
+  const withFields = async (req: Request, fields: Record<string, string>) => {
+    const form = await req.formData();
+    for (const [k, v] of Object.entries(fields)) form.set(k, v);
+    return new Request(req.url, { method: 'POST', body: form, headers: { origin: 'https://example.github.io' } });
+  };
+
+  it('does not add again what a request with a lost answer already added', async () => {
+    // The client counts 10; the pack has 12: the first two of this batch went in, but the answer never came.
+    const pack = fakePack({ size: 12 });
+    const res = await handle(await withFields(await packRequest({ files: 3, set: ownSet }), { size: '10' }), env);
+    expect(await res.json()).toMatchObject({ ok: true, added: 3, size: 13 });
+    expect(pack.calls.filter((c) => c.method === 'addStickerToSet')).toHaveLength(1);
+    expect(pack.stickers).toHaveLength(13);
+  });
+
+  it('still adds when the extra stickers are other emoji (added by hand in @Stickers)', async () => {
+    const pack = fakePack({ emojis: [...Array(10).fill('🔥'), '🐱'] });
+    const res = await handle(await withFields(await packRequest({ files: 2, set: ownSet }), { size: '10' }), env);
+    expect(await res.json()).toMatchObject({ ok: true, added: 2, size: 13 });
+    expect(pack.calls.filter((c) => c.method === 'addStickerToSet')).toHaveLength(2);
+  });
+
+  it('counts a sticker Telegram took before answering "too many requests" — no duplicate after a short wait', async () => {
+    const pack = fakePack({ size: 5, fail: (n) => (n === 1 ? { land: true, error: { error_code: 429, description: 'Too Many Requests: retry after 1', parameters: { retry_after: 1 } } } : null) });
+    const res = await handle(await withFields(await packRequest({ files: 2, set: ownSet }), { size: '5' }), env);
+    expect(await res.json()).toMatchObject({ ok: true, added: 2, size: 7 });
+    expect(pack.stickers).toHaveLength(7);
+    expect(pack.calls.filter((c) => c.method === 'addStickerToSet')).toHaveLength(2);
+  });
+
+  it('reports a sticker that landed with a long flood wait as added', async () => {
+    fakePack({ size: 5, fail: (n) => (n === 2 ? { land: true, error: { error_code: 429, description: 'Too Many Requests: retry after 268', parameters: { retry_after: 268 } } } : null) });
+    const res = await handle(await withFields(await packRequest({ files: 4, set: ownSet }), { size: '5' }), env);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ ok: false, error: 'flood', retryAfter: 268, added: 2, name: ownSet });
+  });
+
+  it('refuses to add to a full pack (200) without trying', async () => {
+    const pack = fakePack({ size: 200 });
+    const res = await handle(await packRequest({ files: 1, set: ownSet }), env);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'pack-full', added: 0 });
+    expect(pack.calls.some((c) => c.method === 'addStickerToSet')).toBe(false);
+  });
+
+  it('names a new pack after the client nonce, and a repeated request finds the pack its lost attempt made', async () => {
+    // Flood control answers, but the pack was created.
+    const pack = fakePack({ createFail: (n) => (n === 1 ? { land: true, error: { error_code: 429, description: 'Too Many Requests: retry after 300' } } : null) });
+    const first = await handle(await withFields(await packRequest({ files: 2 }), { nonce: 'k3x9q' }), env);
+    expect(await first.json()).toMatchObject({ ok: true, added: 2, name: `e${(1234567).toString(36)}_k3x9q_by_Test_Emoji_bot` });
+    // The same request again (the client never saw an answer): no second pack.
+    const again = await handle(await withFields(await packRequest({ files: 2 }), { nonce: 'k3x9q' }), env);
+    expect(await again.json()).toMatchObject({ ok: true, added: 2 });
+    expect(pack.stickers).toHaveLength(2);
+  });
+
+  it('stops within its time budget and leaves the rest (and the chat message) to the next request', async () => {
+    const pack = fakePack({ size: 0, emojis: ['🔥'] });
+    const req = await withFields(await packRequest({ files: 5, set: ownSet }), { size: '1', pace: '15000' });
+    // Only the pauses are fake (the request parsing and signature checks are real async work).
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      let settled = false;
+      const res = handle(req, env).finally(() => (settled = true));
+      while (!settled) {
+        await new Promise((r) => setImmediate(r));
+        await vi.advanceTimersByTimeAsync(500);
+      }
+      expect(await (await res).json()).toMatchObject({ ok: true, added: 3, size: 4 });
+      expect(pack.calls.some((c) => c.method === 'sendMessage')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('the last sticker lands although Telegram refuses', () => {
+  it('counts the request as done, sends the chat message and passes the wait on', async () => {
+    const stickers = Array(5).fill('🔥');
+    const calls = mockTelegram((method, n) => {
+      if (method === 'getStickerSet') return { ok: true, result: { stickers: stickers.map((emoji) => ({ emoji })) } };
+      if (method === 'addStickerToSet') {
+        stickers.push('🔥');
+        return n === 2 ? { ok: false, error_code: 429, description: 'Too Many Requests: retry after 200', parameters: { retry_after: 200 } } : { ok: true, result: true };
+      }
+      return { ok: true, result: true };
+    });
+    const req = await packRequest({ files: 2, set: 'e1_abcde_by_Test_Emoji_bot' });
+    const form = await req.formData();
+    form.set('size', '5');
+    const res = await handle(new Request(req.url, { method: 'POST', body: form, headers: { origin: 'https://example.github.io' } }), env);
+    expect(await res.json()).toMatchObject({ ok: true, added: 2, size: 7, retryAfter: 200 });
+    expect(calls.some((c) => c.method === 'sendMessage')).toBe(true);
+  });
+});

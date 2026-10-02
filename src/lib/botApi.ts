@@ -14,7 +14,7 @@ export interface OutgoingFile {
   type: string;
 }
 
-export type BotError = 'denied' | 'unauthorized' | 'network' | 'server' | 'pack-full' | 'pack-not-found' | 'bad-emoji' | 'flood' | 'bad-files';
+export type BotError = 'denied' | 'unauthorized' | 'network' | 'server' | 'pack-full' | 'pack-not-found' | 'bad-emoji' | 'flood' | 'bad-files' | 'stopped';
 
 /** What the backend managed before an error (so a big job can continue instead of starting over). */
 interface Progress {
@@ -27,7 +27,8 @@ interface Progress {
   name?: string;
 }
 
-type Failure = { ok: false; error: BotError; detail?: string } & Progress;
+/** `retry`: the request may simply not have arrived or finished (a dropped connection, a timeout) — worth repeating. */
+type Failure = { ok: false; error: BotError; detail?: string; retry?: boolean } & Progress;
 
 /** True when a bot backend is configured and the user is known: the Mini App, or a browser linked to the bot. */
 export function canUseBot(): boolean {
@@ -67,9 +68,11 @@ async function call<T>(path: string, build: () => FormData): Promise<{ ok: true;
     if (res.status === 403) return { ok: false, error: 'denied', ...progress };
     if (res.status === 413) return { ok: false, error: 'bad-files', detail: 'HTTP 413' };
     if (body.error && known.includes(body.error as BotError)) return { ok: false, error: body.error as BotError, detail: body.detail, ...progress };
-    return { ok: false, error: 'server', detail: body.detail ?? (body.error ? body.error : `HTTP ${res.status}`), ...progress };
+    // No answer of ours (the platform's timeout page) or an unexpected failure: unlike Telegram's own refusals, worth repeating.
+    const retry = !body.error || body.error === 'server';
+    return { ok: false, error: 'server', detail: body.detail ?? (body.error ? body.error : `HTTP ${res.status}`), retry, ...progress };
   } catch {
-    return { ok: false, error: 'network' };
+    return { ok: false, error: 'network', retry: true };
   }
 }
 
@@ -159,6 +162,10 @@ export interface PackResult {
   title: string;
   added: number;
   canvas: number;
+  /** Stickers in the pack now, when the backend knows. */
+  size?: number;
+  /** Telegram asked to wait after the last sticker of the request. */
+  retryAfter?: number;
 }
 
 /** Asks the bot to create a custom emoji pack (or add to `set`, a pack it created before) — one request. */
@@ -174,6 +181,10 @@ export async function createPack(opts: {
   fresh?: boolean;
   /** Pause between stickers added to an existing pack, ms. */
   pace?: number;
+  /** Stickers the existing pack holds as far as we know (the backend skips what a request with a lost answer added). */
+  size?: number;
+  /** Names a new pack, so repeating the request cannot make a second one. */
+  nonce?: string;
 }) {
   return call<PackResult>('/api/pack', () => {
     const form = new FormData();
@@ -184,6 +195,8 @@ export async function createPack(opts: {
     if (opts.total) form.set('total', String(opts.total));
     if (opts.fresh) form.set('fresh', '1');
     if (opts.pace) form.set('pace', String(Math.round(opts.pace)));
+    if (opts.size !== undefined) form.set('size', String(opts.size));
+    if (opts.nonce) form.set('nonce', opts.nonce);
     for (const item of opts.items) {
       form.append('files', blobOf(item), item.name);
       form.append('emojis', item.emoji);
@@ -193,16 +206,55 @@ export async function createPack(opts: {
 }
 
 /**
- * Telegram creates a pack with up to 50 stickers in one call, but adds the rest one by one and answers bursts
- * with long waits (minutes, growing with every burst). So: 50 at once, then a steady pace that slows down after
- * each warning and speeds up again while things go well.
+ * Telegram creates a pack with up to 50 stickers in one call, but adds the rest one by one, and only so many in a few
+ * minutes: then it answers "retry after N s" (minutes, longer when asked again too early). So: 50 at once, then a steady
+ * pace; a short wait means "slower", a long one is the quota — sat out (however long, while the editor is open), then on.
  */
 export const CREATE_BATCH = 50;
 const ADD_BATCH = 10;
-export const PACE = { start: 800, min: 800, max: 12_000 };
+export const PACE = { start: 1000, min: 800, max: 12_000 };
 /** Stickers per request so that a paced request stays well within the function time limit. */
-const addBatch = (pace: number) => Math.max(1, Math.min(ADD_BATCH, Math.floor(40_000 / (pace + 500))));
+const addBatch = (pace: number) => Math.max(1, Math.min(ADD_BATCH, Math.floor(36_000 / (pace + 800))));
 /* The backend pauses `pace` ms before each sticker it adds (the first of a request too), so requests never burst. */
+/** Waits longer than this are Telegram's quota for a few minutes, not a hint to go slower. */
+const SHORT_FLOOD = 30;
+/** Pauses before repeating a request that got no answer (the backend skips what it already did). */
+const RETRY_AFTER = [3, 10, 30];
+
+// Telegram's wait applies to the next pack request whatever it is (another pack, another window, after a reload):
+// asking early only makes it longer.
+const FLOOD_KEY = 'emoji-studio-flood-until';
+
+export function floodUntil(): number {
+  try {
+    return Number(localStorage.getItem(FLOOD_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function setFloodUntil(until: number): void {
+  try {
+    localStorage.setItem(FLOOD_KEY, String(until));
+  } catch {
+    /* the wait still happens in this job */
+  }
+}
+
+/** Waits until `until` (by the clock: a phone that sleeps meanwhile loses nothing). False when stopped. */
+async function waitUntil(until: number, report: (left: number) => void, signal?: AbortSignal): Promise<boolean> {
+  for (let left = until - Date.now(); left > 0; left = until - Date.now()) {
+    if (signal?.aborted) return false;
+    report(Math.ceil(left / 1000));
+    await new Promise((r) => setTimeout(r, Math.min(1000, left)));
+  }
+  return !signal?.aborted;
+}
+
+const newNonce = () =>
+  Math.floor(Math.random() * 36 ** 6)
+    .toString(36)
+    .padStart(6, '0');
 
 /**
  * Creates (or extends) a pack with any number of emoji: the first request creates it, the next ones add the rest.
@@ -217,6 +269,10 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
     total?: number;
     /** The pack was created by the earlier part of this job. */
     fresh?: boolean;
+    /** Stickers `set` holds now, as far as we know. */
+    size?: number;
+    /** Stops the job between requests and during waits (progress so far is reported as usual). */
+    signal?: AbortSignal;
   },
   onProgress: (p: JobProgress) => void,
   onAdded: (items: T[], pack: PackResult) => void,
@@ -225,10 +281,17 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
   let name = opts.set;
   let pack: PackResult | undefined;
   const fresh = !opts.set;
+  const nonce = newNonce();
+  let size = opts.size;
   let done = 0;
-  let waited = 0;
   let pace = PACE.start;
+  /** Never faster than the pace Telegram last asked to slow down from. */
+  let floor = PACE.min;
+  let failures = 0;
+  const report = (waiting?: number) => onProgress({ done, total: opts.items.length, waiting });
+  const stopped = (): JobResult<PackResult> => ({ ok: false, error: 'stopped', data: pack });
   while (queue.length) {
+    if (!(await waitUntil(floodUntil(), report, opts.signal))) return stopped();
     const batch = takeBatch(queue, name ? addBatch(pace) : CREATE_BATCH);
     const last = batch.length === queue.length;
     const res = await createPack({
@@ -239,24 +302,37 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
       total: opts.total ?? opts.items.length,
       fresh: !!opts.fresh || (fresh && !!name),
       pace: name ? pace : undefined,
+      size: name ? size : undefined,
+      nonce: name ? undefined : nonce,
     });
-    pace = res.ok ? Math.max(PACE.min, pace * 0.85) : res.error === 'flood' ? Math.min(PACE.max, Math.max(pace * 2, 2000)) : pace;
-    const added = res.ok ? batch.length : Math.min(res.added ?? 0, batch.length);
+    // A request may be cut short by its time budget: what it did not add goes in the next one.
+    const added = Math.min(res.ok ? (res.data.added ?? batch.length) : (res.added ?? 0), batch.length);
     const packName = res.ok ? res.data.name : res.name;
     if (added && packName) {
       name = packName;
       pack = res.ok ? res.data : { name: packName, url: `https://t.me/addemoji/${packName}`, title: opts.title, added: 0, canvas: pack?.canvas ?? 100 };
+      size = (res.ok ? res.data.size : undefined) ?? (size ?? 0) + added;
       done += added;
-      pack = { ...pack, added: done };
+      pack = { ...pack, added: done, size };
       onAdded(batch.slice(0, added), pack);
       queue = queue.slice(added);
     }
-    onProgress({ done, total: opts.items.length });
-    if (res.ok) continue;
-    if (res.error === 'flood' && waited < MAX_TOTAL_WAIT) {
+    report();
+    if (res.ok) {
+      failures = 0;
+      pace = Math.max(floor, pace * 0.9);
+      if (res.data.retryAfter) setFloodUntil(Date.now() + res.data.retryAfter * 1000 + 1500);
+      if (!added) return { ok: false, error: 'server', data: pack };
+      continue;
+    }
+    if (res.error === 'flood') {
       const wait = res.retryAfter ?? 10;
-      waited += wait;
-      await waitSeconds(wait, (left) => onProgress({ done, total: opts.items.length, waiting: left }));
+      if (wait <= SHORT_FLOOD) floor = pace = Math.min(PACE.max, Math.max(pace * 1.5, 1500));
+      setFloodUntil(Date.now() + wait * 1000 + 1500);
+      continue;
+    }
+    if (res.retry && failures < RETRY_AFTER.length) {
+      if (!(await waitUntil(Date.now() + RETRY_AFTER[failures++] * 1000, report, opts.signal))) return stopped();
       continue;
     }
     return { ...res, data: pack };
@@ -350,7 +426,7 @@ export async function fetchBotPacks(): Promise<Array<{ name: string; title: stri
  * nothing to wait for. `onPack` gets every finished pack.
  */
 export async function createPacksSplit<T extends OutgoingFile & { emoji: string }>(
-  opts: { title: string; items: readonly T[] },
+  opts: { title: string; items: readonly T[]; signal?: AbortSignal },
   onProgress: (p: JobProgress) => void,
   onPack: (items: T[], pack: PackResult) => void,
 ): Promise<JobResult<PackResult[]>> {
@@ -363,7 +439,7 @@ export async function createPacksSplit<T extends OutgoingFile & { emoji: string 
     const title = chunks.length > 1 ? `${base} ${i + 1}` : base;
     let packDone = 0;
     const res = await createPackAll(
-      { title, items: chunk },
+      { title, items: chunk, signal: opts.signal },
       (p) => onProgress({ ...p, done: done + p.done, total: opts.items.length }),
       (items, pack) => {
         packDone += items.length;

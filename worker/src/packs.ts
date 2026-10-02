@@ -2,12 +2,18 @@
  * POST /api/pack — the bot creates a custom emoji pack owned by the user (or adds to one it created earlier).
  *
  * Form fields: initData (or link — a link code), title, set (optional existing pack name), files[] (.tgs) and emojis[] (one per file).
+ * Repeating a request is safe: a new pack is named after the client's `nonce`, and for an existing pack the client says how
+ * many stickers it counts (`size`) — what an earlier request added although its answer was lost is not added again.
  */
-import { json, json as jsonResponse, telegram, TelegramError, type Env } from './shared.js';
+import { json, json as jsonResponse, MAX_INLINE_WAIT, sleep, telegram, TelegramError, type Env } from './shared.js';
 import { authenticate, packTexts, pickLang } from './telegram.js';
 import { toEmojiCanvas } from './tgs.js';
 
 const MAX_FILES = 50; // createNewStickerSet accepts up to 50 initial stickers
+/** Custom emoji in one pack. */
+const PACK_LIMIT = 200;
+/** Adding stops after this long and the client sends the rest in the next request (Vercel ends a function at 60 s). */
+const REQUEST_BUDGET_MS = 40_000;
 const MAX_PACE_MS = 15_000;
 const MAX_TGS_BYTES = 64 * 1024;
 const DEFAULT_EMOJI = '⭐';
@@ -43,14 +49,19 @@ export function sanitizeTitle(input: unknown): string {
 }
 
 /** Pack names: letters/digits/underscores, start with a letter, no "__", end with _by_<bot>, ≤ 64 chars. */
-export function newPackName(userId: number, botUsername: string, random = Math.random): string {
+export function newPackName(userId: number, botUsername: string, random: (() => number) | string = Math.random): string {
   const suffix = `_by_${botUsername}`;
-  const rnd = Math.floor(random() * 36 ** 5)
-    .toString(36)
-    .padStart(5, '0');
+  const rnd =
+    typeof random === 'string'
+      ? random
+      : Math.floor(random() * 36 ** 5)
+          .toString(36)
+          .padStart(5, '0');
   const base = `e${Math.abs(userId).toString(36)}_${rnd}`.slice(0, 64 - suffix.length);
   return `${base}${suffix}`.replace(/_+/g, '_');
 }
+
+const NONCE = /^[a-z0-9]{5,10}$/;
 
 export function isOwnPackName(name: string, botUsername: string): boolean {
   return (
@@ -87,10 +98,24 @@ async function addToSet(env: Env, userId: number, name: string, sticker: Sticker
   form.set('name', name);
   form.set('sticker', JSON.stringify({ sticker: 'attach://s0', format: 'animated', emoji_list: [sticker.emoji] }));
   form.set('s0', stickerBlob(sticker.data), 's0.tgs');
-  await telegram(env, 'addStickerToSet', form);
+  // No blind repeat on flood control: the sticker may be in already (the caller checks the pack).
+  await telegram(env, 'addStickerToSet', form, { floodRetry: false });
 }
 
 const isFormatError = (err: unknown) => err instanceof TelegramError && FORMAT_ERROR.test(err.message);
+
+/** What a pack holds now (null when Telegram does not say: no such pack, or an error). */
+async function packState(env: Env, name: string): Promise<{ size: number; emojis: string[] } | null> {
+  try {
+    const set = (await telegram(env, 'getStickerSet', { name }, { floodRetry: false })) as { stickers?: Array<{ emoji?: string }> } | null;
+    if (!set || !Array.isArray(set.stickers)) return null;
+    return { size: set.stickers.length, emojis: set.stickers.map((s) => s.emoji ?? '') };
+  } catch {
+    return null;
+  }
+}
+
+const sameEmoji = (a: string, b: string) => a.replace(/\uFE0F/g, '') === b.replace(/\uFE0F/g, '');
 
 /** `progress`: what was done before the error (stickers already in the pack), so the client can continue. */
 function errorResponse(err: unknown, cors: Record<string, string>, progress: { added: number; name?: string } = { added: 0 }): Response {
@@ -110,6 +135,7 @@ function errorResponse(err: unknown, cors: Record<string, string>, progress: { a
 }
 
 export async function handlePack(req: Request, env: Env, cors: Record<string, string>): Promise<Response> {
+  const started = Date.now();
   let form: FormData;
   try {
     form = await req.formData();
@@ -144,44 +170,100 @@ export async function handlePack(req: Request, env: Env, cors: Record<string, st
     };
     let canvas: 100 | 512 = 100;
     let name = existing;
+    /** Stickers of this request that are in the pack. */
+    let added = 0;
+    /** Stickers in the pack afterwards, when known. */
+    let size: number | undefined;
+    /** Telegram's wait after the last sticker went in anyway (the client waits before its next request). */
+    let retryAfter: number | undefined;
+    const addOne = async (i: number) => {
+      try {
+        await addToSet(env, userId, name, variants[canvas][i]);
+      } catch (err) {
+        if (canvas !== 100 || !isFormatError(err)) throw err;
+        canvas = 512;
+        await addToSet(env, userId, name, variants[canvas][i]);
+      }
+    };
 
     if (existing) {
       // Telegram adds custom emoji one by one and punishes bursts with long waits: the client sets the pace.
       // The pause comes before every sticker, the first one too — the previous request may have just added one.
       const pace = Math.min(Math.max(Number(form.get('pace')) || 0, 0), MAX_PACE_MS);
-      for (let i = 0; i < files.length; i++) {
-        if (pace) await new Promise((r) => setTimeout(r, pace));
+      const state = await packState(env, name);
+      if (state && state.size >= PACK_LIMIT) return json({ ok: false, error: 'pack-full', added: 0, name }, 409, cors);
+      // More stickers than the client counts, the same emoji in the same order: an earlier request added them, but its
+      // answer was lost (a timeout, a dropped connection, flood control right after the sticker went in) — skip them.
+      const counted = Number(form.get('size'));
+      if (state && form.has('size') && Number.isInteger(counted) && counted >= 0 && state.size > counted) {
+        const extra = Math.min(state.size - counted, files.length);
+        if (state.emojis.slice(counted, counted + extra).every((e, k) => sameEmoji(e, variants[100][k].emoji))) added = extra;
+      }
+      const skipped = added;
+      /** Stickers of this request in the pack after an error: Telegram may take one and still answer with an error. */
+      const landed = async () => {
+        const now = state ? await packState(env, name) : null;
+        return state && now ? Math.min(Math.max(skipped + now.size - state.size, added), added + 1) : added;
+      };
+      let shortWaits = 0;
+      while (added < files.length && Date.now() - started < REQUEST_BUDGET_MS) {
+        if (pace) await sleep(pace);
         try {
-          try {
-            await addToSet(env, userId, name, variants[canvas][i]);
-          } catch (err) {
-            if (canvas !== 100 || !isFormatError(err)) throw err;
-            canvas = 512;
-            await addToSet(env, userId, name, variants[canvas][i]);
-          }
+          await addOne(added);
+          added++;
         } catch (err) {
-          // Stickers before this one are in the pack: tell the client, it continues from here.
-          return errorResponse(err, cors, { added: i, name });
+          const done = await landed();
+          const wait = err instanceof TelegramError ? err.retryAfter : undefined;
+          if (done === files.length) {
+            // The last one went in before Telegram refused: this request is done (and the chat message goes out).
+            added = done;
+            retryAfter = wait;
+            break;
+          }
+          if (wait !== undefined && wait <= MAX_INLINE_WAIT && shortWaits < 3 && Date.now() - started + wait * 1000 < REQUEST_BUDGET_MS) {
+            // A short flood wait: sit it out here, then go on from what is really in the pack.
+            shortWaits++;
+            await sleep(wait * 1000 + 300);
+            added = done;
+            continue;
+          }
+          return errorResponse(err, cors, { added: done, name });
         }
       }
+      if (state) size = state.size + added - skipped;
     } else {
-      name = newPackName(userId, bot.username);
+      // Named after the client's nonce, a repeated request finds the pack its lost first attempt made.
+      const fromClient = String(form.get('nonce') ?? '');
+      const nonce = NONCE.test(fromClient) ? fromClient : undefined;
+      name = newPackName(userId, bot.username, nonce);
       for (let attempt = 0; ; attempt++) {
         try {
           await createSet(env, userId, name, title, variants[canvas]);
+          added = files.length;
           break;
         } catch (err) {
-          if (canvas === 100 && isFormatError(err)) canvas = 512;
-          else if (attempt < 2 && err instanceof TelegramError && NAME_TAKEN_ERROR.test(err.message)) name = newPackName(userId, bot.username);
-          else throw err;
+          if (canvas === 100 && isFormatError(err)) {
+            canvas = 512;
+          } else {
+            // Created already (by an earlier attempt or request, or before flood control answered)?
+            const state = nonce || attempt > 0 ? await packState(env, name) : null;
+            if (state && state.size > 0) {
+              added = Math.min(state.size, files.length);
+              break;
+            }
+            if (attempt < 2 && err instanceof TelegramError && NAME_TAKEN_ERROR.test(err.message)) name = newPackName(userId, bot.username);
+            else throw err;
+          }
           if (attempt >= 3) throw err;
         }
       }
+      size = added;
     }
 
     const url = `https://t.me/addemoji/${name}`;
-    // Big packs arrive in several requests: the client asks for the chat message only with the last one.
-    if (form.get('notify') !== '0') {
+    // Big packs arrive in several requests: the client asks for the chat message only with the last one
+    // (and a request cut short by its time budget is not the last).
+    if (form.get('notify') !== '0' && added === files.length) {
       const count = Number(form.get('total')) || files.length;
       const fresh = !existing || form.get('fresh') === '1';
       try {
@@ -194,7 +276,7 @@ export async function handlePack(req: Request, env: Env, cors: Record<string, st
         // The pack exists even if the notification could not be delivered.
       }
     }
-    return json({ ok: true, name, url, title, added: files.length, canvas }, 200, cors);
+    return json({ ok: true, name, url, title, added, canvas, ...(size !== undefined && { size }), ...(retryAfter !== undefined && { retryAfter }) }, 200, cors);
   } catch (err) {
     return errorResponse(err, cors);
   }

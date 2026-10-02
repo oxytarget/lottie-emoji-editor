@@ -31,6 +31,8 @@ interface TelegramWebApp {
   setBackgroundColor?(color: string): void;
   setBottomBarColor?(color: string): void;
   disableVerticalSwipes?(): void;
+  enableClosingConfirmation?(): void;
+  disableClosingConfirmation?(): void;
   onEvent?(event: string, cb: () => void): void;
   themeParams?: ThemeParams;
   colorScheme?: 'light' | 'dark';
@@ -183,6 +185,17 @@ export function requestWriteAccess(): Promise<boolean> {
       resolve(false);
     }
   });
+}
+
+/** While a long job runs, closing the Mini App asks first. */
+export function confirmClosing(on: boolean): void {
+  const app = webApp();
+  try {
+    if (on) app?.enableClosingConfirmation?.();
+    else app?.disableClosingConfirmation?.();
+  } catch {
+    /* older clients */
+  }
 }
 
 export function closeApp(): void {

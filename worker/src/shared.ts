@@ -20,9 +20,9 @@ export class TelegramError extends Error {
   }
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Short flood waits are sat out here; longer ones go back to the client, which waits and continues. */
-const MAX_INLINE_WAIT = 8;
+export const MAX_INLINE_WAIT = 8;
 
 export function corsHeaders(req: Request, env: Env): Record<string, string> {
   const origin = req.headers.get('origin') ?? '';
@@ -49,7 +49,11 @@ const apiBase = (env: Env) => (env.TELEGRAM_API ?? 'https://api.telegram.org').r
 /** Download URL of a file from getFile (contains the token — never hand it to clients). */
 export const telegramFileUrl = (env: Env, path: string): string => `${apiBase(env)}/file/bot${env.TELEGRAM_BOT_TOKEN}/${path}`;
 
-export async function telegram(env: Env, method: string, body: FormData | Record<string, unknown>): Promise<unknown> {
+/**
+ * Calls a Bot API method. Short flood waits are sat out and the call repeated — unless `floodRetry` is false: for calls
+ * Telegram may have carried out before answering "too many requests" (adding a sticker), a blind repeat could do it twice.
+ */
+export async function telegram(env: Env, method: string, body: FormData | Record<string, unknown>, opts: { floodRetry?: boolean } = {}): Promise<unknown> {
   const base = apiBase(env);
   const init: RequestInit =
     body instanceof FormData
@@ -67,7 +71,7 @@ export async function telegram(env: Env, method: string, body: FormData | Record
     if (data.ok) return data.result;
     const code = data.error_code ?? res.status;
     const retryAfter = code === 429 ? data.parameters?.retry_after ?? (Number(/retry after (\d+)/i.exec(data.description ?? '')?.[1]) || 5) : undefined;
-    if (retryAfter !== undefined && retryAfter <= MAX_INLINE_WAIT && attempt < 2) {
+    if (retryAfter !== undefined && retryAfter <= MAX_INLINE_WAIT && attempt < 2 && opts.floodRetry !== false) {
       await sleep(retryAfter * 1000 + 300);
       continue;
     }

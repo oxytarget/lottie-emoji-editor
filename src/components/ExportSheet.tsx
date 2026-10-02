@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { I18nKey } from '../i18n';
 import { canUseBot, CREATE_BATCH, createPackAll, createPacksSplit, packsAvailable, sendAllToChat, usesLink, type BotError, type JobProgress, type PackResult } from '../lib/botApi';
 import { useLinkedCode } from '../lib/botLink';
-import { closeApp, haptic, isTelegram, openExternal, openTelegramLink } from '../lib/telegram';
+import { closeApp, confirmClosing, haptic, isTelegram, openExternal, openTelegramLink } from '../lib/telegram';
 import { downloadBlob, formatKb, slug, tgsFromJson, zipFiles, type TgsCheck } from '../lottie/export';
 import { useEditor } from '../state/store';
 import type { CompiledEmoji } from '../state/useCompiled';
@@ -31,12 +31,16 @@ const ERROR_KEYS: Record<BotError, I18nKey> = {
   'bad-emoji': 'packBadEmoji',
   flood: 'packFlood',
   'bad-files': 'packBadFiles',
+  stopped: 'packStopped',
 };
 
 const errorKey = (job: 'pack' | 'send', error: BotError): I18nKey =>
   job === 'pack' && (error === 'network' || error === 'server') ? 'packFailed' : ERROR_KEYS[error];
 
 const fill = (text: string, vars: Record<string, number>) => text.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ''));
+
+/** 268 → "4:28", 9 → "0:09". */
+const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 /** Telegram allows up to 200 custom emoji per pack. */
 const PACK_LIMIT = 200;
@@ -69,6 +73,8 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
   const [result, setResult] = useState<Result>({ kind: 'none' });
   const [progress, setProgress] = useState<JobProgress | null>(null);
   const [sendResume, setSendResume] = useState<SendResume | null>(null);
+  /** Stops a pack job (between requests or during Telegram's wait); what is done stays done. */
+  const stopJob = useRef<AbortController | null>(null);
   // A big pack interrupted earlier (even in another session) continues where it stopped.
   const packJob = useEditor((s) => s.packJob);
   const setStore = useEditor((s) => s.set);
@@ -129,8 +135,9 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
     setBusy('pack');
     setResult({ kind: 'none' });
     setProgress({ done: 0, total: emojis.length });
+    const stop = (stopJob.current = new AbortController());
     const res = await createPacksSplit(
-      { title, items: packItems(emojis) },
+      { title, items: packItems(emojis), signal: stop.signal },
       setProgress,
       (items, pack) => savePack({ name: pack.name, title: pack.title, url: pack.url, count: items.length }),
     );
@@ -156,14 +163,23 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
     const createdHere = !!packResume?.created || !setName;
     let addedNow = 0;
     setProgress({ done: before.length, total: emojis.length });
+    const stop = (stopJob.current = new AbortController());
     const res = await createPackAll(
-      { title: targetPack?.title ?? title, set: setName, total: emojis.length, fresh: !!packResume?.created, items: packItems(packPending) },
+      {
+        title: targetPack?.title ?? title,
+        set: setName,
+        size: setName ? startCount : undefined,
+        total: emojis.length,
+        fresh: !!packResume?.created,
+        items: packItems(packPending),
+        signal: stop.signal,
+      },
       (p) => setProgress({ ...p, done: p.done + before.length, total: emojis.length }),
       (batch, pack) => {
         addedIds.push(...batch.map((b) => b.id));
         addedNow += batch.length;
         // Remember the pack and the progress as soon as they exist: closing the app loses nothing.
-        savePack({ name: pack.name, title: pack.title, url: pack.url, count: startCount + addedNow });
+        savePack({ name: pack.name, title: pack.title, url: pack.url, count: pack.size ?? startCount + addedNow });
         if (addedIds.length < emojis.length) setStore('packJob', { pack: pack.name, ids: [...addedIds], created: createdHere });
       },
     );
@@ -207,7 +223,14 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
   };
 
   const progressLabel = (p: JobProgress | null) =>
-    p?.waiting ? `${t('packWaiting')}: ${p.waiting} с` : p ? `${p.done} / ${p.total}` : '';
+    p?.waiting ? `${t('packWaiting')}: ${clock(p.waiting)}` : p ? `${p.done} / ${p.total}` : '';
+
+  // In Telegram, closing the app mid-job asks first (the job goes on only while the editor is open).
+  useEffect(() => {
+    if (busy !== 'pack') return;
+    confirmClosing(true);
+    return () => confirmClosing(false);
+  }, [busy]);
 
   return (
     <div className="sheet-backdrop" onClick={onClose} data-state={state}>
@@ -324,8 +347,13 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
                 <span style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} className={progress.waiting ? 'is-waiting' : ''} />
               </div>
             )}
-            {busy === 'pack' && progress && !splitting && progress.total > CREATE_BATCH && (
+            {busy === 'pack' && progress && (progress.waiting || (!splitting && progress.total > CREATE_BATCH)) && (
               <p className="hint">{progress.waiting ? t('packWaitHint') : t('packPaceHint')}</p>
+            )}
+            {busy === 'pack' && (
+              <button type="button" className="link-btn is-center" onClick={() => stopJob.current?.abort()}>
+                {t('packStop')}
+              </button>
             )}
 
             {result.kind === 'packs' && (
