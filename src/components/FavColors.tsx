@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { haptic } from '../lib/telegram';
+import { normalizeHex } from '../lottie/color';
 import { useEditor } from '../state/store';
 import { useUi } from '../state/ui';
 import { useT } from '../state/useT';
+import { SWATCHES, toggleFavorite } from './ColorSwatch';
 import { FavEditBar, FavEditToggle, useFavSelection } from './FavEdit';
-import { CheckIcon, CloseIcon, StarIcon } from './icons';
+import { CheckIcon, CloseIcon, PlusIcon, StarIcon } from './icons';
+import { usePresence } from './motion';
 
 /**
  * Favourite colours at hand: a strip above the panel. Drag a colour onto any colour circle, or tap it and then
@@ -32,6 +35,97 @@ function applyAt(x: number, y: number, hex: string): boolean {
   return true;
 }
 
+/** "+" on the favourites strip: a palette where a tap adds the colour to the favourites (another tap takes it out). */
+function FavColorAdd() {
+  const t = useT();
+  const favs = useEditor((s) => s.favColors);
+  const [open, setOpen] = useState(false);
+  const popover = usePresence(open, 160);
+  const wrap = useRef<HTMLDivElement>(null);
+  const [custom, setCustom] = useState('#8b5cf6');
+  const [hex, setHex] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => wrap.current && !wrap.current.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const valid = (v: string) => /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v.trim());
+  const addHex = () => {
+    const v = hex.trim();
+    if (!valid(v)) return;
+    const c = normalizeHex(v.startsWith('#') ? v : `#${v}`).toLowerCase();
+    if (!useEditor.getState().favColors.includes(c)) toggleFavorite(c);
+    setHex('');
+  };
+  const addCustom = () => {
+    const c = custom.toLowerCase();
+    if (!useEditor.getState().favColors.includes(c)) toggleFavorite(c);
+  };
+
+  return (
+    <div className="swatch-wrap fav-add" ref={wrap}>
+      <button type="button" className="pill-btn is-compact" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <PlusIcon width={14} height={14} /> {t('favAddColor')}
+      </button>
+      {popover.mounted && (
+        <div className="popover fav-add-popover" role="dialog" aria-label={t('favAddTitle')} data-state={popover.state}>
+          <span className="label">
+            <StarIcon width={12} height={12} filled /> {t('favAddTitle')}
+          </span>
+          <div className="popover-grid">
+            {SWATCHES.map((c, i) => (
+              <button
+                key={c}
+                type="button"
+                className={`swatch swatch-sm${favs.includes(c) ? ' is-fav' : ''}`}
+                style={{ background: c, '--i': i } as React.CSSProperties}
+                aria-pressed={favs.includes(c)}
+                aria-label={c}
+                onClick={() => toggleFavorite(c)}
+              />
+            ))}
+          </div>
+          <div className="popover-row">
+            <label className="hex-field">
+              <span>{t('hex')}</span>
+              <input
+                value={hex}
+                maxLength={7}
+                placeholder="#ff8800"
+                spellCheck={false}
+                onChange={(e) => setHex(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addHex()}
+              />
+            </label>
+            <button type="button" className="fav-star" disabled={!valid(hex)} title={t('favColorAdd')} aria-label={t('favColorAdd')} onClick={addHex}>
+              <PlusIcon width={18} height={18} />
+            </button>
+          </div>
+          <div className="popover-row">
+            <label className="native-color" title={t('customColor')}>
+              <input type="color" value={custom} onChange={(e) => setCustom(e.target.value)} aria-label={t('customColor')} />
+              <span style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }} />
+            </label>
+            <span className="swatch swatch-md" style={{ background: custom }} aria-hidden />
+            <button type="button" className={`pill-btn is-compact${favs.includes(custom.toLowerCase()) ? '' : ' is-accent'}`} disabled={favs.includes(custom.toLowerCase())} onClick={addCustom}>
+              <StarIcon width={14} height={14} filled /> {t('favAddColor')}
+            </button>
+          </div>
+          <p className="popover-hint">{t('favAddHint')}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FavColorBar() {
   const t = useT();
   const favs = useEditor((s) => s.favColors);
@@ -40,7 +134,6 @@ export function FavColorBar() {
   const removeFavColors = useEditor((s) => s.removeFavColors);
   const [drag, setDrag] = useState<{ color: string; x: number; y: number } | null>(null);
   const sel = useFavSelection();
-  if (!favs.length) return null;
 
   const start = (color: string, e: React.PointerEvent) => {
     if (e.button > 0) return;
@@ -105,42 +198,49 @@ export function FavColorBar() {
         <span className="label">
           <StarIcon width={14} height={14} filled /> {t('favColorsBar')}
         </span>
-        <FavEditToggle
-          sel={{
-            ...sel,
-            start: () => {
-              setPaint(null);
-              sel.start();
-            },
-          }}
-        />
+        <div className="row-actions">
+          {!sel.editing && <FavColorAdd />}
+          {favs.length > 0 && (
+            <FavEditToggle
+              sel={{
+                ...sel,
+                start: () => {
+                  setPaint(null);
+                  sel.start();
+                },
+              }}
+            />
+          )}
+        </div>
       </div>
-      <div className="fav-colors-row">
-        {favs.map((c, i) => (
-          <button
-            key={c}
-            type="button"
-            className={`fav-color${paint === c ? ' is-armed' : ''}${sel.selected.has(c) ? ' is-selected' : ''}`}
-            style={{ background: c, '--i': i } as React.CSSProperties}
-            aria-pressed={sel.editing ? sel.selected.has(c) : paint === c}
-            aria-label={`${t('favColorsBar')}: ${c}`}
-            title={c}
-            onPointerDown={(e) => start(c, e)}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter' && e.key !== ' ') return;
-              e.preventDefault();
-              if (sel.editing) sel.toggle(c);
-              else setPaint(paint === c ? null : c);
-            }}
-          >
-            {sel.selected.has(c) && <CheckIcon width={16} height={16} strokeWidth={3.5} className="fav-check" />}
-          </button>
-        ))}
-      </div>
+      {favs.length > 0 && (
+        <div className="fav-colors-row">
+          {favs.map((c, i) => (
+            <button
+              key={c}
+              type="button"
+              className={`fav-color${paint === c ? ' is-armed' : ''}${sel.selected.has(c) ? ' is-selected' : ''}`}
+              style={{ background: c, '--i': i } as React.CSSProperties}
+              aria-pressed={sel.editing ? sel.selected.has(c) : paint === c}
+              aria-label={`${t('favColorsBar')}: ${c}`}
+              title={c}
+              onPointerDown={(e) => start(c, e)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                if (sel.editing) sel.toggle(c);
+                else setPaint(paint === c ? null : c);
+              }}
+            >
+              {sel.selected.has(c) && <CheckIcon width={16} height={16} strokeWidth={3.5} className="fav-check" />}
+            </button>
+          ))}
+        </div>
+      )}
       {sel.editing ? (
         <FavEditBar sel={sel} ids={favs} onDelete={removeFavColors} confirmClear={t('favClearColorsConfirm')} />
       ) : (
-        <p className="hint">{t('favColorsHint')}</p>
+        <p className="hint">{t(favs.length ? 'favColorsHint' : 'favColorsEmpty')}</p>
       )}
       {drag && <span className="color-ghost" style={{ background: drag.color, transform: `translate(${drag.x - 22}px, ${drag.y - 22}px)` }} aria-hidden />}
     </section>

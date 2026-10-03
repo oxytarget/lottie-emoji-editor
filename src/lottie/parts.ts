@@ -354,13 +354,20 @@ export interface PartXf {
   rotation: number;
   /** Height relative to width (free stretching; 1 or missing = proportional). */
   stretch?: number;
+  /** Opacity multiplier, 0…1 (1 or missing = as in the file). */
+  opacity?: number;
 }
 
 export const NO_XF: PartXf = { x: 0, y: 0, scale: 1, rotation: 0 };
 
-export const isIdentityXf = (xf: PartXf | undefined): boolean =>
+/** No move, resize or rotation (opacity aside). */
+export const isIdentityMove = (xf: PartXf | undefined): boolean =>
   !xf ||
   (Math.abs(xf.x) < 0.01 && Math.abs(xf.y) < 0.01 && Math.abs(xf.scale - 1) < 1e-3 && Math.abs(xf.rotation) < 0.01 && Math.abs((xf.stretch ?? 1) - 1) < 1e-3);
+
+const isFullOpacity = (xf: PartXf | undefined) => Math.abs((xf?.opacity ?? 1) - 1) < 1e-3;
+
+export const isIdentityXf = (xf: PartXf | undefined): boolean => isIdentityMove(xf) && isFullOpacity(xf);
 
 /** SVG class prefix of annotated parts: `pt-N`, N = index in `flattenParts(listParts(anim))`. */
 export const PART_CLASS = 'pt-';
@@ -493,13 +500,61 @@ function applyMove(target: Target, plan: MovePlan): void {
   list.push(holder);
 }
 
+/** Multiplies an opacity property (static or keyframed, 0…100) by `k`. */
+function scaleOpacity(prop: unknown, k: number): Json {
+  const r = (v: unknown) => (typeof v === 'number' ? Math.round(Math.min(100, Math.max(0, v * k)) * 100) / 100 : v);
+  const o = (prop ?? { a: 0, k: 100 }) as Json;
+  if (o.a !== 1 || !Array.isArray(o.k)) return { ...o, a: 0, k: r(typeof o.k === 'number' ? o.k : Array.isArray(o.k) ? (o.k as unknown[])[0] : 100) };
+  return {
+    ...o,
+    k: (o.k as Json[]).map((kf) => ({
+      ...kf,
+      ...(Array.isArray(kf.s) ? { s: (kf.s as unknown[]).map(r) } : {}),
+      ...(Array.isArray(kf.e) ? { e: (kf.e as unknown[]).map(r) } : {}),
+    })),
+  };
+}
+
+/**
+ * Makes a part more transparent. A layer's opacity covers its content (a precomp: all of it); a null's does not
+ * reach the layers parented to it in Lottie, so those get it instead; a group gets it in its transform.
+ */
+function applyOpacity(target: Target, k: number): void {
+  if (target.type === 'group') {
+    const items = ((target.group.it as ShapeItem[] | undefined) ??= []);
+    const tr = items.find((it) => it.ty === 'tr');
+    if (tr) (tr as Json).o = scaleOpacity((tr as Json).o, k);
+    else items.push(shapeTransform({ o: Math.round(k * 10000) / 100 }));
+    return;
+  }
+  const { list, layer } = target;
+  const fade = (l: AnyLayer) => {
+    const ks = ((l as Json).ks ??= {}) as Json;
+    ks.o = scaleOpacity(ks.o, k);
+  };
+  if ((layer.ty as number) !== 3) return fade(layer);
+  // Children of a null (and their children), in the same list.
+  const under = new Set<number>([layer.ind as number]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const l of list) {
+      if (typeof l.ind === 'number' && l.parent !== undefined && under.has(l.parent) && !under.has(l.ind)) {
+        under.add(l.ind);
+        if ((l.ty as number) !== 3) fade(l);
+        grew = true;
+      }
+    }
+  }
+}
+
 /**
  * Returns a copy of the animation with parts hidden, moved, and (optionally) one part replaced by the user's
  * content. The replaced part keeps its transform, so the new text/logo follows the original motion.
  */
 export function applyPartEdits(anim: LottieAnimation, edits: PartEdits, content?: ReplaceContent): LottieAnimation {
-  const moves = Object.entries(edits.transforms ?? {}).filter(([, xf]) => !isIdentityXf(xf));
-  if (!edits.hidden.length && !edits.replace && !moves.length && !edits.annotate) return anim;
+  const moves = Object.entries(edits.transforms ?? {}).filter(([, xf]) => !isIdentityMove(xf));
+  const fades = Object.entries(edits.transforms ?? {}).filter(([, xf]) => !isFullOpacity(xf));
+  if (!edits.hidden.length && !edits.replace && !moves.length && !fades.length && !edits.annotate) return anim;
   // Moves are measured on the untouched source.
   const plans = moves.flatMap(([id, xf]) => {
     const plan = movePlan(anim, id, xf);
@@ -524,7 +579,11 @@ export function applyPartEdits(anim: LottieAnimation, edits: PartEdits, content?
   const hiddenTargets = hidden.map((id) => resolve(copy, id));
   const hiddenShapes = hidden.map((id, i) => (hiddenTargets[i] ? null : resolveShape(copy, id)));
   const moveTargets = plans.map(({ id, plan }) => ({ target: resolve(copy, id), plan }));
+  const fadeTargets = fades.map(([id, xf]) => ({ target: resolve(copy, id), k: Math.min(1, Math.max(0, xf.opacity ?? 1)) }));
   const replaceTarget = edits.replace && content ? resolve(copy, edits.replace) : null;
+
+  // First, while layers are what the file made them (hiding turns a layer into a null).
+  for (const { target, k } of fadeTargets) if (target) applyOpacity(target, k);
 
   if (replaceTarget && content) {
     if (replaceTarget.type === 'group') {

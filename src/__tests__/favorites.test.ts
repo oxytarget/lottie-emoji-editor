@@ -84,3 +84,16 @@ describe('user presets', () => {
     expect(useEditor.getState().userPresets.map((p) => p.name)).toEqual(['T']);
   });
 });
+
+describe('palette colours to favourites', () => {
+  it('adds a palette colour (any case/format) and takes it out again, saying which', async () => {
+    const { toggleFavorite } = await import('../components/ColorSwatch');
+    const { useUi } = await import('../state/ui');
+    toggleFavorite('#3B82F6');
+    expect(useEditor.getState().favColors).toEqual(['#3b82f6']);
+    expect(useUi.getState().toast?.text).toMatch(/додано|добавлен|added/i);
+    toggleFavorite('#3b82f6');
+    expect(useEditor.getState().favColors).toEqual([]);
+    expect(useUi.getState().toast?.text).toMatch(/прибрано|убран|removed/i);
+  });
+});

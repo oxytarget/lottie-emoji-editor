@@ -856,6 +856,10 @@ div.note p + p {
   gap: 12px;
 }
 
+.slider-grid > .is-wide {
+  grid-column: 1 / -1;
+}
+
 /* ---------- Swatches & popover ---------- */
 
 .swatch-wrap {
@@ -4921,4 +4925,67 @@ a.primary-btn {
 
 .link-status .is-ok {
   color: var(--ok);
+}
+
+/* Palette colours in favourites: a star on the ones there; hold to add */
+.swatch.is-fav {
+  position: relative;
+}
+
+.swatch.is-fav::after {
+  content: '★';
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  font-size: 12px;
+  line-height: 1;
+  color: #f59e0b;
+  text-shadow: 0 0 2px var(--raised), 0 0 3px var(--raised);
+  pointer-events: none;
+}
+
+.popover-grid .swatch {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.popover-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.popover-hint svg {
+  flex: none;
+  color: #f59e0b;
+}
+
+.fav-add-popover > .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--warn);
+}
+
+.fav-add-popover .popover-row .pill-btn {
+  flex: 1;
+  justify-content: center;
+}
+
+.fav-add-popover .fav-star:disabled {
+  opacity: 0.45;
+}
+
+@media (min-width: 601px) {
+  /* The "+" sits at the right of the strip: open towards the left. */
+  .fav-add-popover {
+    left: auto;
+    right: 0;
+    transform-origin: calc(100% - 20px) -10px;
+  }
 }

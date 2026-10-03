@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { I18nKey } from '../i18n';
 import { recolor } from '../lottie/imported';
 import { applyItemPaints } from '../lottie/itemPaints';
-import { flattenParts, isIdentityXf, isolatePart, listParts, NO_XF, partFrame, partSvg, type Part, type PartKind, type PartXf } from '../lottie/parts';
+import { flattenParts, isIdentityMove, isolatePart, listParts, NO_XF, partFrame, partSvg, type Part, type PartKind, type PartXf } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
 import { editImport, useUi } from '../state/ui';
@@ -180,11 +180,24 @@ function PartControls({ imp, part, anim, flat }: { imp: ImportedTemplate; part: 
   }
   const xf = imp.transforms[part.id] ?? NO_XF;
   const set = (patch: Partial<PartXf>) => editImport(imp.id, { kind: 'transform', part: part.id, xf: { ...xf, ...patch } });
-  const reset = () => editImport(imp.id, { kind: 'transform', part: part.id, xf: null });
+  // "Reset position" leaves the transparency (it has its own reset).
+  const reset = () => editImport(imp.id, { kind: 'transform', part: part.id, xf: xf.opacity !== undefined ? { ...NO_XF, opacity: xf.opacity } : null });
   return (
     <li className="part-controls" style={{ '--depth': 0 } as React.CSSProperties}>
       <LayerPaints imp={imp} part={part} anim={anim} />
       <div className="slider-grid">
+        <div className="is-wide">
+          <Slider
+            label={t('partOpacity')}
+            value={Math.round((1 - (xf.opacity ?? 1)) * 100)}
+            min={0}
+            max={100}
+            step={1}
+            format={(v) => `${v}%`}
+            onChange={(v) => set({ opacity: 1 - v / 100 })}
+            onReset={() => set({ opacity: 1 })}
+          />
+        </div>
         <Slider label={t('partX')} value={Math.round(xf.x)} min={-256} max={256} step={1} onChange={(x) => set({ x })} onReset={() => set({ x: 0 })} />
         <Slider label={t('partY')} value={Math.round(xf.y)} min={-256} max={256} step={1} onChange={(y) => set({ y })} onReset={() => set({ y: 0 })} />
         <Slider
@@ -208,7 +221,7 @@ function PartControls({ imp, part, anim, flat }: { imp: ImportedTemplate; part: 
           onReset={() => set({ rotation: 0 })}
         />
       </div>
-      {!isIdentityXf(xf) && (
+      {!isIdentityMove(xf) && (
         <MotionButton motion="spin-back" className="pill-btn is-compact is-pop-in" icon={<ResetIcon width={16} height={16} />} label={t('canvasReset')} onClick={reset}>
           {t('canvasReset')}
         </MotionButton>
@@ -244,7 +257,8 @@ function PartRow(props: RowProps) {
   const hiddenByParent = imp.hidden.some((h) => isAncestor(h, part.id));
   const replaced = imp.replace === part.id;
   const isGrabbed = grabbed === part.id;
-  const moved = !isIdentityXf(imp.transforms[part.id]);
+  const moved = !isIdentityMove(imp.transforms[part.id]);
+  const faded = Math.round((1 - (imp.transforms[part.id]?.opacity ?? 1)) * 100);
   const open = expanded.has(part.id);
   return (
     <>
@@ -292,6 +306,7 @@ function PartRow(props: RowProps) {
               {part.detected && !replaced && <em className="part-badge">{t('partsBadge')}</em>}
               {replaced && <em className="part-badge is-accent">{t('partsYours')}</em>}
               {moved && <GrabIcon width={12} height={12} className="part-moved" />}
+              {faded > 0 && <em className="part-badge is-faded">{faded}%</em>}
             </span>
           </span>
         </button>

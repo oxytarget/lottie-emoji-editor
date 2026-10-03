@@ -364,7 +364,15 @@ const sameXf = (a: ContentXf, b: ContentXf) =>
   a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation && a.stretch === b.stretch;
 const DEFAULT_XF: ContentXf = { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, stretch: 1 };
 const toContentXf = (p: PartXf): ContentXf => ({ scale: p.scale, offsetX: p.x, offsetY: p.y, rotation: p.rotation, stretch: p.stretch ?? 1 });
-const toPartXf = (c: ContentXf): PartXf => ({ x: c.offsetX, y: c.offsetY, scale: c.scale, rotation: c.rotation, ...(c.stretch !== 1 ? { stretch: c.stretch } : {}) });
+/** A canvas move of a part (its transparency, set in the layer list, stays). */
+const toPartXf = (c: ContentXf, opacity?: number): PartXf => ({
+  x: c.offsetX,
+  y: c.offsetY,
+  scale: c.scale,
+  rotation: c.rotation,
+  ...(c.stretch !== 1 ? { stretch: c.stretch } : {}),
+  ...(opacity !== undefined && opacity !== 1 ? { opacity } : {}),
+});
 /** Canvas selection: the user's text/logo or a part of an imported animation. */
 const CONTENT = '@content';
 const samePaint = (a: Paint, b: Paint) => JSON.stringify(a) === JSON.stringify(b);
@@ -448,9 +456,9 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
     }
     if (!liveXf || !emoji) return null;
     if (!part) return compileOne({ ...input, ...liveXf }, emoji.id);
-    const imports = input.imports.map((i) => (i.id === emoji.id ? { ...i, transforms: { ...i.transforms, [part.id]: toPartXf(liveXf) } } : i));
+    const imports = input.imports.map((i) => (i.id === emoji.id ? { ...i, transforms: { ...i.transforms, [part.id]: toPartXf(liveXf, partXf?.opacity) } } : i));
     return compileOne({ ...input, imports }, emoji.id);
-  }, [liveXf, liveGrad, liveItem, input, emoji, part]);
+  }, [liveXf, liveGrad, liveItem, input, emoji, part, partXf?.opacity]);
   // Keep the instant preview until the full recompile of the committed transform has landed.
   useEffect(() => {
     if (live && (live.key !== key || (!editing && !pending && sameXf(live.xf, stored)))) setLive(null);
@@ -538,7 +546,7 @@ export function PreviewCard({ emoji, pending, input }: { emoji: CompiledEmoji | 
   };
   const onCommit = (next: ContentXf) => {
     setLive({ key, xf: next });
-    if (part && imp) editImport(imp.id, { kind: 'transform', part: part.id, xf: toPartXf(next) });
+    if (part && imp) editImport(imp.id, { kind: 'transform', part: part.id, xf: toPartXf(next, partXf?.opacity) });
     else setTransform(next);
   };
 
