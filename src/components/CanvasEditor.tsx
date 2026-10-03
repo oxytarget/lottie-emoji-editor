@@ -53,7 +53,7 @@ interface Gesture {
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
-const LIMITS = { scale: [0.2, 3], offset: [-260, 260], stretch: [0.2, 5] } as const;
+const LIMITS = { scale: [0.01, 3], offset: [-260, 260], stretch: [0.2, 5] } as const;
 
 function normalize(xf: ContentXf): ContentXf {
   let r = ((xf.rotation % 360) + 540) % 360 - 180;

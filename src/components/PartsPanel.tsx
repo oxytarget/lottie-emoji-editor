@@ -208,7 +208,7 @@ function PartControls({ imp, part, anim, flat }: { imp: ImportedTemplate; part: 
         <Slider
           label={t('partSize')}
           value={Math.round(xf.scale * 100)}
-          min={20}
+          min={1}
           max={300}
           step={1}
           format={(v) => `${v}%`}
