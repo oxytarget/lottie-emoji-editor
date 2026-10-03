@@ -1,6 +1,7 @@
+import { hexToOklch, oklchToHex } from './brand';
 import { hexToRgba, toHex } from './color';
 import { parentOf, parseId } from './layout';
-import { assetsOf, resolvePart, type AnyLayer } from './parts';
+import { assetsOf, itemsBBox, resolvePart, type AnyLayer } from './parts';
 import type { LottieAnimation, ShapeItem } from './types';
 
 /**
@@ -11,7 +12,10 @@ import type { LottieAnimation, ShapeItem } from './types';
  * group — so layer-list operations move these ids like any other (see `remapId`).
  */
 
-/** An edit of one item. Gradient points are in the item's own coordinates. */
+/**
+ * An edit of one item. Gradient points are in the item's own coordinates. A flat fill/stroke given two or more
+ * `stops` becomes a gradient (with `from`/`to`/`type`).
+ */
 export interface ItemPaint {
   /** Flat fill/stroke colour. */
   color?: string;
@@ -130,11 +134,58 @@ export function resolveItem(anim: LottieAnimation, id: string): ShapeItem | null
 /** Channels 0–1, three decimals (TGS files have a size limit). */
 const rgb = (hex: string) => hexToRgba(hex).slice(0, 3).map((v) => Math.round(v * 1000) / 1000);
 
+const round = (v: number) => Math.round(v * 1000) / 1000;
+
+/** Turns a flat fill/stroke into a gradient one, in place (opacity, fill rule, stroke width and joins stay). */
+function toGradient(it: ShapeItem, edit: ItemPaint): void {
+  const stops = edit.stops ?? [];
+  const k = stops.flatMap((hex, i) => [round(i / (stops.length - 1)), ...rgb(hex)]);
+  delete it.c;
+  it.ty = it.ty === 'fl' ? 'gf' : 'gs';
+  it.g = { p: stops.length, k: { a: 0, k } };
+  it.s = { a: 0, k: edit.from ?? [0, 0] };
+  it.e = { a: 0, k: edit.to ?? [0, 100] };
+  it.t = edit.type ?? 1;
+  // Radial highlight (players expect them on every gradient).
+  it.h = { a: 0, k: 0 };
+  it.a = { a: 0, k: 0 };
+}
+
+/** The second colour of a new gradient: the same hue, clearly lighter or darker. */
+export function gradientPartner(hex: string): string {
+  const c = hexToOklch(hex);
+  return oklchToHex({ ...c, L: c.L > 0.55 ? c.L - 0.28 : Math.min(0.97, c.L + 0.3), h: (c.h + 18) % 360 });
+}
+
+/**
+ * Where a new gradient of an item runs: across what its group (or layer) draws, top to bottom — from the middle
+ * outwards for a radial one. In the item's own coordinates.
+ */
+export function gradientSpan(anim: LottieAnimation, id: string, type: 1 | 2 = 1): { from: [number, number]; to: [number, number] } {
+  const container = resolvePart(anim, parentOf(id).parent);
+  const items = ((container?.type === 'group' ? container.group.it : container?.layer.shapes) ?? []) as ShapeItem[];
+  const box = itemsBBox(items).box ?? { x: 0, y: 0, w: 100, h: 100 };
+  const cx = round(box.x + box.w / 2);
+  const cy = round(box.y + box.h / 2);
+  if (type === 2) return { from: [cx, cy], to: [cx, round(cy + Math.max(box.w, box.h) / 2)] };
+  return { from: [cx, round(box.y)], to: [cx, round(box.y + box.h)] };
+}
+
+/** The edit that turns a flat item into a gradient of its colour and a partner colour. */
+export function flatToGradient(anim: LottieAnimation, item: PaintItem): ItemPaint {
+  const color = item.colors[0];
+  return { stops: [color, gradientPartner(color)], type: 1, ...gradientSpan(anim, item.id, 1) };
+}
+
 /** Applies item edits to `anim` in place (pass a private copy). */
 export function applyItemPaints(anim: LottieAnimation, paints: Readonly<Record<string, ItemPaint>>): LottieAnimation {
   for (const [id, edit] of Object.entries(paints)) {
     const it = resolveItem(anim, id);
     if (!it) continue;
+    if ((it.ty === 'fl' || it.ty === 'st') && (edit.stops?.length ?? 0) >= 2) {
+      toGradient(it, edit);
+      continue;
+    }
     if ((it.ty === 'fl' || it.ty === 'st') && edit.color) {
       it.c = { a: 0, k: [...rgb(edit.color), 1] };
       continue;

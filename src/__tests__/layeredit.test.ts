@@ -6,7 +6,8 @@ import { textToArt } from '../content/text';
 import { stretched } from '../components/CanvasEditor';
 import { compose } from '../lottie/compose';
 import { extractPalette, recolor } from '../lottie/imported';
-import { applyItemPaints, listPaintItems, resolveItem, tagItemGradients } from '../lottie/itemPaints';
+import { hexToOklch } from '../lottie/brand';
+import { applyItemPaints, flatToGradient, gradientPartner, gradientSpan, listPaintItems, resolveItem, tagItemGradients } from '../lottie/itemPaints';
 import { applyLayoutOp, CONTENT_SLOT, INSERTED, remapEdits } from '../lottie/layout';
 import { solid, stripGradientClasses } from '../lottie/paint';
 import { applyPartEdits, flattenParts, listParts, partBounds } from '../lottie/parts';
@@ -81,6 +82,44 @@ describe('layer colours', () => {
     // The ring keeps its colours: a per-layer edit is not a palette change.
     expect(items[0].colors).toEqual(['#ffffff', '#333333']);
     expect(resolveItem(anim, 'l0/g1/g0')).toBeNull();
+  });
+
+  it('turns a flat colour of one layer into a gradient across its shape (and back with the edit gone)', () => {
+    const src = badge();
+    const dot = listPaintItems(src).find((i) => i.id === 'l0/g1/g1')!;
+    const edit = flatToGradient(src, dot);
+    // Its colour and a clearly different shade of it, top to bottom over the 120×120 rect.
+    expect(edit.stops![0]).toBe('#0000ff');
+    expect(edit.stops![1]).not.toBe('#0000ff');
+    expect(edit).toMatchObject({ type: 1, from: [0, -60], to: [0, 60] });
+    expect(gradientSpan(src, 'l0/g1/g1', 2)).toEqual({ from: [0, 0], to: [0, 60] });
+
+    const anim = applyItemPaints(badge(), { 'l0/g1/g1': { color: '#ff0000', ...edit } });
+    const item = resolveItem(anim, 'l0/g1/g1')!;
+    expect(item.ty).toBe('gf');
+    expect(item.c).toBeUndefined();
+    expect(item.o).toEqual(st(100));
+    expect((item.g as { p: number }).p).toBe(2);
+    expect(listPaintItems(anim).find((i) => i.id === 'l0/g1/g1')).toMatchObject({ gradient: true, kind: 'fill', colors: edit.stops, from: [0, -60], to: [0, 60], type: 1 });
+    // Its stops and type are then edited like any gradient.
+    const again = applyItemPaints(badge(), { 'l0/g1/g1': { ...edit, stops: ['#00ff00', '#000000'], type: 2 } });
+    expect(listPaintItems(again).find((i) => i.id === 'l0/g1/g1')).toMatchObject({ colors: ['#00ff00', '#000000'], type: 2 });
+  });
+
+  it('makes stroke gradients from flat strokes, keeping the width', () => {
+    const anim = badge();
+    ((anim.layers[1] as Layer).shapes as ShapeItem[]).push({ ty: 'st', o: st(100), w: st(12), lc: 2, lj: 2, c: st([1, 0, 0, 1]) });
+    const out = applyItemPaints(anim, { 'l1/g2': { stops: ['#ff0000', '#220000'], from: [0, -240], to: [0, 240], type: 1 } });
+    const stroke = resolveItem(out, 'l1/g2')!;
+    expect(stroke).toMatchObject({ ty: 'gs', w: st(12), lc: 2, lj: 2, t: 1 });
+    expect(listPaintItems(out).find((i) => i.id === 'l1/g2')).toMatchObject({ kind: 'stroke', gradient: true, colors: ['#ff0000', '#220000'] });
+  });
+
+  it('picks a partner colour that stands apart: darker for light colours, lighter for dark ones', () => {
+    const light = hexToOklch(gradientPartner('#ffdd55'));
+    const dark = hexToOklch(gradientPartner('#1a1a40'));
+    expect(light.L).toBeLessThan(hexToOklch('#ffdd55').L - 0.2);
+    expect(dark.L).toBeGreaterThan(hexToOklch('#1a1a40').L + 0.2);
   });
 
   it('tags gradients for the canvas handles in the preview only', () => {

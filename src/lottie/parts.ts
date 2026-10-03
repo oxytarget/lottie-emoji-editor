@@ -154,7 +154,7 @@ function collectContours(items: readonly ShapeItem[], m: Matrix, out: Contour[],
   }
 }
 
-function itemsBBox(items: readonly ShapeItem[]): { box: BBox | null; contours: number } {
+export function itemsBBox(items: readonly ShapeItem[]): { box: BBox | null; contours: number } {
   const contours: Contour[] = [];
   // A group's own `tr` applies to its content; here the list is a layer's shapes or a group's items.
   collectContours(items.filter((it) => it.ty !== 'tr'), IDENTITY, contours);

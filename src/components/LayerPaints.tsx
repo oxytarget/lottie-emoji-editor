@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { listPaintItems, type ItemPaint, type PaintItem } from '../lottie/itemPaints';
+import { flatToGradient, gradientSpan, listPaintItems, resolveItem, type ItemPaint, type PaintItem } from '../lottie/itemPaints';
 import type { Part } from '../lottie/parts';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
@@ -7,7 +7,7 @@ import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
 import { ColorSwatch } from './ColorSwatch';
 import { GradientTools, MotionButton, PaintSwatches } from './controls';
-import { GradHandlesIcon, LinearIcon, PaletteIcon, RadialIcon, ResetIcon } from './icons';
+import { GradHandlesIcon, GradientIcon, LinearIcon, PaletteIcon, RadialIcon, ResetIcon } from './icons';
 
 /** More would not fit a phone screen; nested layers show the rest. */
 const MAX_ITEMS = 16;
@@ -18,11 +18,23 @@ function paintEdit(imp: ImportedTemplate, item: string, patch: ItemPaint | null)
   editImport(imp.id, { kind: 'paint', item, paint: patch ? { ...current, ...patch } : null });
 }
 
-function ItemRow({ imp, item }: { imp: ImportedTemplate; item: PaintItem }) {
+function ItemRow({ imp, item, anim }: { imp: ImportedTemplate; item: PaintItem; anim: LottieAnimation }) {
   const t = useT();
   const gradItem = useUi((u) => u.gradItem);
   const setGradItem = useUi((u) => u.setGradItem);
   const edited = !!imp.paints?.[item.id];
+  // A flat colour of the file made a gradient here ("reset" makes it flat again).
+  const made = item.gradient && ['fl', 'st'].includes(resolveItem(imp.data, item.id)?.ty ?? '');
+  const makeGradient = () => {
+    paintEdit(imp, item.id, flatToGradient(anim, item));
+    // Its handles on the canvas right away.
+    setGradItem({ imp: imp.id, item: item.id });
+  };
+  const toggleType = () => {
+    const type = item.type === 2 ? 1 : 2;
+    // A gradient made here runs across its shape again (from the middle outwards when radial).
+    paintEdit(imp, item.id, made ? { type, ...gradientSpan(anim, item.id, type) } : { type });
+  };
   const onCanvas = gradItem?.imp === imp.id && gradItem.item === item.id;
   const label = item.gradient ? t(item.kind === 'fill' ? 'layerGradFill' : 'layerGradStroke') : t(item.kind === 'fill' ? 'layerFill' : 'layerStroke');
   const setStop = (i: number, hex: string) => {
@@ -63,16 +75,25 @@ function ItemRow({ imp, item }: { imp: ImportedTemplate; item: PaintItem }) {
               className="icon-btn is-small"
               icon={item.type === 2 ? <RadialIcon width={16} height={16} /> : <LinearIcon width={16} height={16} />}
               label={item.type === 2 ? t('radialGradient') : t('gradLinear')}
-              onClick={() => paintEdit(imp, item.id, { type: item.type === 2 ? 1 : 2 })}
+              onClick={toggleType}
             />
           </>
+        )}
+        {!item.gradient && (
+          <MotionButton
+            motion="pop"
+            className="icon-btn is-small"
+            icon={<GradientIcon width={16} height={16} />}
+            label={t('layerMakeGradient')}
+            onClick={makeGradient}
+          />
         )}
         {edited && (
           <MotionButton
             motion="spin-back"
             className="icon-btn is-small is-pop-in"
             icon={<ResetIcon width={16} height={16} />}
-            label={t('layerPaintReset')}
+            label={t(made ? 'layerFlatAgain' : 'layerPaintReset')}
             onClick={() => paintEdit(imp, item.id, null)}
           />
         )}
@@ -140,7 +161,7 @@ export function LayerPaints({ imp, part, anim }: { imp: ImportedTemplate; part: 
       {content ? (
         <ContentPaints />
       ) : items.length ? (
-        items.map((item) => <ItemRow key={item.id} imp={imp} item={item} />)
+        items.map((item) => <ItemRow key={item.id} imp={imp} item={item} anim={anim} />)
       ) : (
         <p className="hint">{t('layerNoColors')}</p>
       )}

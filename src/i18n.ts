@@ -561,6 +561,8 @@ const dict = {
   },
   layerNoColors: { uk: 'У цього шару немає власних кольорів.', ru: 'У этого слоя нет своих цветов.', en: 'This layer has no colours of its own.' },
   layerContentColors: { uk: 'Тут ваш текст/лого — його кольори:', ru: 'Здесь ваш текст/лого — его цвета:', en: 'Your text/logo is here — its colours:' },
+  layerMakeGradient: { uk: 'Зробити градієнтом', ru: 'Сделать градиентом', en: 'Make it a gradient' },
+  layerFlatAgain: { uk: 'Знову суцільний колір з файлу', ru: 'Снова сплошной цвет из файла', en: 'Back to the file’s flat colour' },
   layerPaintReset: { uk: 'Повернути колір з файлу', ru: 'Вернуть цвет из файла', en: 'Back to the file’s colour' },
   layerMore: { uk: 'і ще {n} — оберіть вкладений шар', ru: 'и ещё {n} — выберите вложенный слой', en: '{n} more — pick a nested layer' },
   ratioLocked: {

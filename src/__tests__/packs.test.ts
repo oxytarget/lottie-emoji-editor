@@ -346,9 +346,10 @@ describe('repeat-safe pack requests (Telegram limits, lost answers)', () => {
     try {
       let settled = false;
       const res = handle(req, env).finally(() => (settled = true));
+      // The clock moves only while the request waits on a pause, so the real async work around it takes no time.
       while (!settled) {
         await new Promise((r) => setImmediate(r));
-        await vi.advanceTimersByTimeAsync(500);
+        if (vi.getTimerCount()) await vi.advanceTimersToNextTimerAsync();
       }
       expect(await (await res).json()).toMatchObject({ ok: true, added: 3, size: 4 });
       expect(pack.calls.some((c) => c.method === 'sendMessage')).toBe(false);
