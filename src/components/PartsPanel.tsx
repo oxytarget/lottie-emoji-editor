@@ -7,7 +7,7 @@ import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from '../state/store';
 import { editImport, useUi } from '../state/ui';
 import { useT } from '../state/useT';
-import { CheckIcon, ChevronIcon, CopyIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ImageIcon, PasteIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, TypeIcon, WarningIcon } from './icons';
+import { CheckIcon, ChevronIcon, CopyIcon, PlusIcon, EyeIcon, EyeOffIcon, GrabIcon, GripIcon, ImageIcon, PasteIcon, ReplaceIcon, ResetIcon, StarIcon, TrashIcon, TypeIcon, WarningIcon } from './icons';
 import { copyToClipboard, pasteFromClipboard } from '../state/editCommands';
 import { applyLayerOp, DragGhost, FavLogoStrip, useLayerDnd, type DragSource } from './LayerDnd';
 import { checkOp, INSERTED, parentOf, removalTarget, rootOf, type Drop } from '../lottie/layout';
@@ -15,6 +15,9 @@ import { MotionButton, Slider } from './controls';
 import { LayerPaints } from './LayerPaints';
 import { useInView } from './LottieView';
 import { usePoster } from '../state/posters';
+import { addTextLayer, newTextSpec, textLayerOf } from '../state/textLayers';
+import { translate } from '../i18n';
+import { TextLayerEditor } from './TextLayerEditor';
 
 const KIND_KEYS: Record<PartKind, I18nKey> = {
   shape: 'partShape',
@@ -179,11 +182,13 @@ function PartControls({ imp, part, anim, flat }: { imp: ImportedTemplate; part: 
     );
   }
   const xf = imp.transforms[part.id] ?? NO_XF;
+  const isText = !!textLayerOf(imp, part.id);
   const set = (patch: Partial<PartXf>) => editImport(imp.id, { kind: 'transform', part: part.id, xf: { ...xf, ...patch } });
   // "Reset position" leaves the transparency (it has its own reset).
   const reset = () => editImport(imp.id, { kind: 'transform', part: part.id, xf: xf.opacity !== undefined ? { ...NO_XF, opacity: xf.opacity } : null });
   return (
     <li className="part-controls" style={{ '--depth': 0 } as React.CSSProperties}>
+      {isText && <TextLayerEditor imp={imp} partId={part.id} />}
       <LayerPaints imp={imp} part={part} anim={anim} />
       <div className="slider-grid">
         <div className="is-wide">
@@ -401,6 +406,14 @@ export function PartsPanel({ imp }: { imp: ImportedTemplate }) {
       <div className="subcard-head">
         <h3 className="section-title">{t('partsTitle')}</h3>
         <div className="row-actions">
+          <button
+            type="button"
+            className="pill-btn is-compact is-accent"
+            title={t('textLayerAddTitle')}
+            onClick={() => addTextLayer(imp.id, newTextSpec(translate(useEditor.getState().lang, 'textLayerDefault')))}
+          >
+            <PlusIcon width={16} height={16} /> {t('textLayerAdd')}
+          </button>
           <button type="button" className="pill-btn is-compact" title={`${t('layerPaste')} (Ctrl+V)`} onClick={() => pasteFromClipboard()}>
             <PasteIcon width={16} height={16} /> {t('layerPaste')}
           </button>

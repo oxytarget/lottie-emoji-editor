@@ -208,6 +208,12 @@ const dict = {
   redone: { uk: 'Повторено', ru: 'Повторено', en: 'Redone' },
   nothingToUndo: { uk: 'Нічого скасовувати', ru: 'Нечего отменять', en: 'Nothing to undo' },
   layerCopy: { uk: 'Копіювати шар', ru: 'Копировать слой', en: 'Copy layer' },
+  textLayerAdd: { uk: 'Текст', ru: 'Текст', en: 'Text' },
+  textLayerAddTitle: { uk: 'Додати ще один текст окремим шаром', ru: 'Добавить ещё один текст отдельным слоем', en: 'Add another text as a layer' },
+  textLayerDefault: { uk: 'Текст', ru: 'Текст', en: 'Text' },
+  textLayerTitle: { uk: 'Текст шару', ru: 'Текст слоя', en: 'Layer text' },
+  textLayerOutline: { uk: 'Товщина обводки', ru: 'Толщина обводки', en: 'Outline width' },
+  textLayerEmpty: { uk: 'Шрифт не має цих символів — текст не змінено.', ru: 'В шрифте нет этих символов — текст не изменён.', en: 'The font has none of these characters — the text stays as it was.' },
   layerPaste: { uk: 'Вставити шар', ru: 'Вставить слой', en: 'Paste layer' },
   clipCopied: {
     uk: 'Шар скопійовано: вставте його (Ctrl+V) тут або в іншому вікні редактора',

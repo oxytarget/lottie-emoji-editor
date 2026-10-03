@@ -5,7 +5,7 @@ import { applyLayout, applyLayoutOp, INSERTED, remapId, slotForRun, type LayoutO
 import { analyzePack, packCandidates, packRuns, type PackPick } from '../lottie/packs';
 import { translate } from '../i18n';
 import { brandImports, brandColors } from './brand';
-import { logoArt } from './logoArt';
+import { layerArt } from './logoArt';
 import { parseFragment } from '../lottie/fragment';
 import type { LottieAnimation } from '../lottie/types';
 import { useEditor, type ImportedTemplate } from './store';
@@ -78,7 +78,7 @@ export async function loadPack(name: string, personal: boolean): Promise<void> {
     // Layer-list edits are replayed on the freshly downloaded sticker (older saved edits have none).
     const layout = saved?.layout ?? defaults.layout;
     const svgs = useEditor.getState().layoutSvgs;
-    const edited = applyLayout(data, layout, (key) => logoArt(svgs[key]), (key) => parseFragment(svgs[key]));
+    const edited = applyLayout(data, layout, (key) => layerArt(svgs[key]), (key) => parseFragment(svgs[key]));
     return {
       id: packTemplateId(name, item.uid),
       name: `${item.emoji || '⭐'} ${i + 1}`,

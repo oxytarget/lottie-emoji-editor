@@ -47,6 +47,9 @@ export { INSERTED, SLOT_MN };
  */
 export const CONTENT_SLOT = '@content';
 
+/** Match name prefix of an inserted logo/text layer, followed by its key (so a text layer can be found and edited). */
+export const INSERT_MN = 'emoji-studio:insert:';
+
 type Json = Record<string, unknown>;
 type ListKind = 'layers' | 'items';
 
@@ -360,13 +363,13 @@ export function applyLayoutOp(
         st: 0,
         bm: 0,
       };
-      if (slot) layer.mn = SLOT_MN;
+      layer.mn = slot ? SLOT_MN : `${INSERT_MN}${op.svg}`;
       layers.splice(at, 0, layer);
     } else {
       const box = ref.box ?? { x: -50, y: -50, w: 100, h: 100 };
       const size = Math.max(box.w, box.h, 20) * 0.6;
       const g = group(art ? logoShapes(art, size, size) : [slotFrame(size, size * 0.6)], { p: [box.x + box.w / 2, box.y + box.h / 2] }, op.name);
-      if (slot) g.mn = SLOT_MN;
+      g.mn = slot ? SLOT_MN : `${INSERT_MN}${op.svg}`;
       (ref.list as ShapeItem[]).splice(at, 0, g);
     }
     return formatId([...parseId(op.at.parent), childToken(ref.kind, op.at.parent, at)]);

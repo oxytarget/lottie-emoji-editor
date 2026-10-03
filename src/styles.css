@@ -4989,3 +4989,64 @@ a.primary-btn {
     transform-origin: calc(100% - 20px) -10px;
   }
 }
+
+/* Text layers added with "+ Text" */
+.text-layer {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--card);
+  border: 1px solid var(--accent-line);
+}
+
+.text-layer-input {
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--sub);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  resize: vertical;
+}
+
+.text-layer-input:focus,
+.text-layer-font:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.text-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.text-layer-font {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--sub);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.text-layer-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-layer-color .hint {
+  margin: 0;
+  font-size: 12px;
+}
