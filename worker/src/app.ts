@@ -6,6 +6,7 @@
  *   POST /api/telegram   — bot webhook: /start, and sticker packs sent to the bot (→ editor templates).
  *   GET  /api/stickerset, /api/sticker, /api/templates — sticker packs as templates (see templates.ts).
  *   GET  /api/link       — checks a link code (the editor in a browser acts for a user — see linkCode).
+ *   /api/app/*           — accounts, generations, payments, PRO and the admin panel (account.ts, payments.ts).
  *   GET  /               — health check.
  *
  * Settings: TELEGRAM_BOT_TOKEN (secret), APP_URL, ALLOWED_ORIGINS (comma separated), ADMIN_IDS (optional,
@@ -14,6 +15,8 @@
 import { corsHeaders, json, telegram, TelegramError, type Env } from './shared.js';
 import { authenticate, LINK_DAYS, linkCode, pickLang, TEXTS, validateLinkCode, webhookSecret } from './telegram.js';
 import { botInfo, handlePack } from './packs.js';
+import { handleAdmin, handleCatalog, handleGenerate, handleMe, handleTemplateEdits, paidFor } from './account.js';
+import { handleCryptoPayWebhook, handlePay, handlePayStatus } from './payments.js';
 import {
   handleSticker,
   handleStickerSet,
@@ -80,6 +83,9 @@ async function handleSend(req: Request, env: Env, cors: Record<string, string>):
     const limit = f.name.endsWith('.tgs') ? MAX_TGS_BYTES : MAX_JSON_BYTES;
     if (!FILE_NAME.test(f.name) || f.size === 0 || f.size > limit) return json({ ok: false, error: 'bad-files', file: f.name }, 400, cors);
   }
+
+  // With accounts on, clients receive only designs they generated (paid for).
+  if (!(await paidFor(env, auth.user.id, String(form.get('gens') ?? '').split(','), files.length))) return json({ ok: false, error: 'not-paid' }, 402, cors);
 
   const progress = { sent: 0 };
   // Big exports arrive in several requests: the instructions go with the last one only.
@@ -172,6 +178,17 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (req.method === 'GET' && url.pathname === '/api/sticker') return handleSticker(url, env);
   if (req.method === 'GET' && url.pathname === '/api/templates') return handleTemplates(env);
   if (req.method === 'GET' && url.pathname === '/api/link') return handleLink(url, env, cors);
+  if (url.pathname.startsWith('/api/app/')) {
+    const action = url.pathname.slice('/api/app/'.length);
+    if (req.method === 'POST' && action === 'cryptopay') return handleCryptoPayWebhook(req, env);
+    if (req.method === 'GET' && action === 'catalog') return handleCatalog(env, cors);
+    if (req.method === 'GET' && action === 'template-edits') return handleTemplateEdits(url, env, cors);
+    if (req.method === 'POST' && action === 'me') return handleMe(req, env, cors);
+    if (req.method === 'POST' && action === 'generate') return handleGenerate(req, env, cors);
+    if (req.method === 'POST' && action === 'pay') return handlePay(req, env, cors);
+    if (req.method === 'POST' && action === 'pay-status') return handlePayStatus(req, env, cors);
+    if (req.method === 'POST' && action === 'admin') return handleAdmin(req, env, cors);
+  }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/health')) {
     // The numeric bot id (token prefix) is public; it lets setup scripts check the right token is configured.
     const bot = Number(env.TELEGRAM_BOT_TOKEN.split(':')[0]) || null;
@@ -194,5 +211,14 @@ export function envFromProcess(vars: Record<string, string | undefined>): Env {
     ALLOWED_ORIGINS: vars.ALLOWED_ORIGINS || [DEFAULT_ORIGIN, production].filter(Boolean).join(','),
     TELEGRAM_API: vars.TELEGRAM_API,
     ADMIN_IDS: vars.ADMIN_IDS,
+    KV_URL: vars.KV_REST_API_URL || vars.UPSTASH_REDIS_REST_URL,
+    KV_TOKEN: vars.KV_REST_API_TOKEN || vars.UPSTASH_REDIS_REST_TOKEN,
+    STORE: vars.STORE,
+    CRYPTO_PAY_TOKEN: vars.CRYPTO_PAY_TOKEN?.trim(),
+    CRYPTO_PAY_NETWORK: vars.CRYPTO_PAY_NETWORK,
+    TON_WALLET: vars.TON_WALLET?.trim(),
+    TON_NETWORK: vars.TON_NETWORK,
+    TONCENTER_API_KEY: vars.TONCENTER_API_KEY,
+    TON_USD_RATE: vars.TON_USD_RATE,
   };
 }

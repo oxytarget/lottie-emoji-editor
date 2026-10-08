@@ -77,10 +77,12 @@ async function call<T>(path: string, build: () => FormData): Promise<{ ok: true;
 }
 
 /** Asks the bot to send the files to the current user's chat (one request; see `sendAllToChat`). */
-export async function sendToChat(files: OutgoingFile[], last = true) {
+export async function sendToChat(files: OutgoingFile[], last = true, gens?: readonly string[]) {
   return call<{ sent: number }>('/api/send', () => {
     const form = new FormData();
     signIn(form);
+    // With accounts on, clients receive only what they generated: the generation ids prove it.
+    if (gens?.length) form.set('gens', gens.join(','));
     if (!last) form.set('last', '0');
     for (const f of files) form.append('files', blobOf(f), f.name);
     return form;
@@ -130,13 +132,14 @@ export async function sendAllToChat<T extends OutgoingFile>(
   items: readonly T[],
   onProgress: (p: JobProgress) => void,
   onSent: (items: T[]) => void,
+  gens?: readonly string[],
 ): Promise<JobResult<{ sent: number }>> {
   let queue = [...items];
   let done = 0;
   let waited = 0;
   while (queue.length) {
     const batch = takeBatch(queue, 20);
-    const res = await sendToChat(batch, batch.length === queue.length);
+    const res = await sendToChat(batch, batch.length === queue.length, gens);
     const sent = res.ok ? batch.length : Math.min(res.sent ?? 0, batch.length);
     if (sent) {
       onSent(batch.slice(0, sent));
@@ -185,6 +188,8 @@ export async function createPack(opts: {
   size?: number;
   /** Names a new pack, so repeating the request cannot make a second one. */
   nonce?: string;
+  /** Generation ids that paid for these designs (accounts on). */
+  gens?: readonly string[];
 }) {
   return call<PackResult>('/api/pack', () => {
     const form = new FormData();
@@ -197,6 +202,7 @@ export async function createPack(opts: {
     if (opts.pace) form.set('pace', String(Math.round(opts.pace)));
     if (opts.size !== undefined) form.set('size', String(opts.size));
     if (opts.nonce) form.set('nonce', opts.nonce);
+    if (opts.gens?.length) form.set('gens', opts.gens.join(','));
     for (const item of opts.items) {
       form.append('files', blobOf(item), item.name);
       form.append('emojis', item.emoji);
@@ -273,6 +279,7 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
     size?: number;
     /** Stops the job between requests and during waits (progress so far is reported as usual). */
     signal?: AbortSignal;
+    gens?: readonly string[];
   },
   onProgress: (p: JobProgress) => void,
   onAdded: (items: T[], pack: PackResult) => void,
@@ -304,6 +311,7 @@ export async function createPackAll<T extends OutgoingFile & { emoji: string }>(
       pace: name ? pace : undefined,
       size: name ? size : undefined,
       nonce: name ? undefined : nonce,
+      gens: opts.gens,
     });
     // A request may be cut short by its time budget: what it did not add goes in the next one.
     const added = Math.min(res.ok ? (res.data.added ?? batch.length) : (res.added ?? 0), batch.length);

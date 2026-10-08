@@ -5,8 +5,25 @@ export interface Env {
   APP_URL: string;
   ALLOWED_ORIGINS?: string;
   TELEGRAM_API?: string;
-  /** Telegram user ids (comma separated) allowed to add template packs for everyone. */
+  /** Telegram user ids (comma separated): admins (templates for everyone, the admin panel, free generations). */
   ADMIN_IDS?: string;
+  /** Accounts and payments (see store.ts). */
+  KV_URL?: string;
+  KV_TOKEN?: string;
+  /** "memory" — tests and local runs. */
+  STORE?: string;
+  /** Crypto Pay (@CryptoBot) app token, and "testnet" to use @CryptoTestnetBot. */
+  CRYPTO_PAY_TOKEN?: string;
+  CRYPTO_PAY_NETWORK?: string;
+  /** TON address that receives payments; "testnet" network; toncenter API key (optional); fixed TON price in USD (optional). */
+  TON_WALLET?: string;
+  TON_NETWORK?: string;
+  TONCENTER_API_KEY?: string;
+  TON_USD_RATE?: string;
+  /** Base URL for the toncenter API (tests). */
+  TONCENTER_API?: string;
+  /** Base URL for the Crypto Pay API (tests). */
+  CRYPTO_PAY_API?: string;
 }
 
 export class TelegramError extends Error {

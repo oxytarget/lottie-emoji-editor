@@ -296,3 +296,46 @@ export const PasteIcon = (p: P) => (
     <path d="M12 11v6M9 14l3 3 3-3" />
   </svg>
 );
+
+export const HomeIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M3.5 10.5 12 3.5l8.5 7" />
+    <path d="M5.5 9v10a1.5 1.5 0 0 0 1.5 1.5h3.5v-6h3v6H17a1.5 1.5 0 0 0 1.5-1.5V9" />
+  </svg>
+);
+
+export const CrownIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="m3 7.5 4.5 4 4.5-7 4.5 7 4.5-4-2 11H5z" />
+    <path d="M5 21h14" />
+  </svg>
+);
+
+export const ClockIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </svg>
+);
+
+export const CameraIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2.5h6L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </svg>
+);
+
+export const WalletIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3" />
+    <path d="M4 7.5v10A2.5 2.5 0 0 0 6.5 20H20V8H6.5A2.5 2.5 0 0 1 4 5.5" />
+    <circle cx="16" cy="14" r="1.2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+export const ShieldIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3.5 5 6.5v5c0 4.5 3 8 7 9.5 4-1.5 7-5 7-9.5v-5z" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);

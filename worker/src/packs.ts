@@ -8,6 +8,7 @@
 import { json, json as jsonResponse, MAX_INLINE_WAIT, sleep, telegram, TelegramError, type Env } from './shared.js';
 import { authenticate, packTexts, pickLang } from './telegram.js';
 import { toEmojiCanvas } from './tgs.js';
+import { paidFor } from './account.js';
 
 const MAX_FILES = 50; // createNewStickerSet accepts up to 50 initial stickers
 /** Custom emoji in one pack. */
@@ -151,6 +152,7 @@ export async function handlePack(req: Request, env: Env, cors: Record<string, st
   for (const f of files) {
     if (!f.name.endsWith('.tgs') || f.size === 0 || f.size > MAX_TGS_BYTES) return json({ ok: false, error: 'bad-files', file: f.name }, 400, cors);
   }
+  if (!(await paidFor(env, auth.user.id, String(form.get('gens') ?? '').split(','), files.length))) return json({ ok: false, error: 'not-paid' }, 402, cors);
   const emojis = form.getAll('emojis');
   const title = sanitizeTitle(form.get('title'));
   const existing = String(form.get('set') ?? '').trim();

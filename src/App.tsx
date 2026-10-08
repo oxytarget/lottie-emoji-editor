@@ -4,7 +4,7 @@ import { ContentCard } from './components/ContentCard';
 import { ExportSheet } from './components/ExportSheet';
 import { MotionButton } from './components/controls';
 import { Segmented } from './components/controls';
-import { DownloadIcon, GridIcon, LayersIcon, PaletteIcon, StickersIcon, TypeIcon, UndoIcon } from './components/icons';
+import { DownloadIcon, GridIcon, LayersIcon, PaletteIcon, StickersIcon, TypeIcon, UndoIcon, UserIcon } from './components/icons';
 import { Bump, usePresence } from './components/motion';
 import { FavColorBar, PaintBanner } from './components/FavColors';
 import { ImportedPanel, PreviewCard } from './components/PreviewCard';
@@ -22,7 +22,11 @@ import { THEME_COLORS, useApplyTheme, useSystemTheme } from './lib/theme';
 import { openPack } from './state/packs';
 import { useEditor } from './state/store';
 import { useUi, type Section, type Tab } from './state/ui';
-import { useCompiled } from './state/useCompiled';
+import { useCompiled, type Compiled } from './state/useCompiled';
+import { ClientApp } from './client/ClientApp';
+import { showsAdvanced, useAccount } from './state/account';
+import { useLinkedCode } from './lib/botLink';
+import type { Theme } from './lib/theme';
 import { useT } from './state/useT';
 
 const TABS: Array<{ value: Tab; key: I18nKey; icon: React.ReactNode }> = [
@@ -140,8 +144,11 @@ function usePackBootstrap() {
 
 const SECTION_TITLES: Record<Section, I18nKey> = { create: 'navCreate', studio: 'navStudio', drafts: 'navDrafts', profile: 'navProfile' };
 
+/**
+ * The app: clients get the client app (automatic layout, generations, payments, PRO); admins can switch to the
+ * advanced editor. Who is an admin comes from the backend (and the backend checks it again on every admin action).
+ */
 export default function App() {
-  const t = useT();
   const compiled = useCompiled();
   usePackBootstrap();
   const set = useEditor((s) => s.set);
@@ -157,6 +164,26 @@ export default function App() {
     shownTheme.current = theme;
     if (before !== theme && useEditor.getState().previewBg === before) set('previewBg', theme);
   }, [theme, set]);
+  // The account: on start, on linking Telegram in a browser, and when the user comes back to the app.
+  const linked = useLinkedCode();
+  const refresh = useAccount((s) => s.refresh);
+  useEffect(() => {
+    refresh();
+  }, [linked, refresh]);
+  useEffect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && refresh();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refresh]);
+  const advanced = useAccount(showsAdvanced);
+  if (advanced) return <EditorApp compiled={compiled} theme={theme} toggleTheme={toggleTheme} />;
+  return <ClientApp compiled={compiled} theme={theme} onTheme={toggleTheme} />;
+}
+
+/** The advanced editor (layers, templates, fonts, positions) — admins only. */
+function EditorApp({ compiled, theme, toggleTheme }: { compiled: Compiled; theme: Theme; toggleTheme: () => void }) {
+  const t = useT();
+  const setAdvanced = useAccount((s) => s.setAdvanced);
   const selected = useEditor((s) => s.selected);
   const active = useEditor((s) => s.active);
   const section = useUi((u) => u.section);
@@ -192,6 +219,9 @@ export default function App() {
         {/* Phones: where you are; wide screens show the section bar instead. */}
         <h1 className="topbar-title">{t(SECTION_TITLES[section])}</h1>
         <SectionNav />
+        <button type="button" className="chip-btn c-exit-advanced" onClick={() => setAdvanced(false)} title="Client mode">
+          <UserIcon width={16} height={16} />
+        </button>
         <button type="button" className="selected-chip" onClick={() => goTo('create')} title={t('selectedChip')}>
           <StickersIcon width={16} height={16} />
           <Bump value={selectedEmojis.length} />

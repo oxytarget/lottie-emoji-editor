@@ -24,6 +24,7 @@ import { colorFamilies } from '../lottie/brand';
 import { deleteSelection } from '../state/editCommands';
 import { LottieView } from './LottieView';
 import { PartsPanel } from './PartsPanel';
+import { PublishPack } from '../client/PublishPack';
 import { emojiName } from './TemplateGrid';
 
 const BGS: PreviewBg[] = ['light', 'dark', 'chess'];
@@ -235,6 +236,7 @@ export function ImportedPanel({ id }: { id: string }) {
         <button type="button" className="pill-btn is-compact" onClick={() => editImport(id, { kind: 'colorsReset' })}>
           <ResetIcon width={18} height={18} /> {t('importedReset')}
         </button>
+        <PublishPack imp={imp} />
         {!imp.source && (
           <button type="button" className="pill-btn is-compact is-danger" onClick={() => remove(id)}>
             <TrashIcon width={18} height={18} /> {t('importedRemove')}
