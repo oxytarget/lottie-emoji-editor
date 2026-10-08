@@ -203,8 +203,30 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 const DEFAULT_APP_URL = 'https://oxytarget.github.io/lottie-emoji-editor/';
 const DEFAULT_ORIGIN = 'https://oxytarget.github.io';
 
+/**
+ * The Upstash Redis REST address and token: KV_REST_API_* / UPSTASH_REDIS_REST_*, or <PREFIX>_REST_API_* /
+ * <PREFIX>_KV_REST_API_* when the Vercel integration was connected with a custom prefix.
+ */
+export function redisFromEnv(vars: Record<string, string | undefined>): { url?: string; token?: string } {
+  const pairs: Array<[string, string]> = [
+    ['KV_REST_API_URL', 'KV_REST_API_TOKEN'],
+    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+    ...Object.keys(vars)
+      .filter((k) => k.endsWith('_REST_API_URL') || k.endsWith('_REDIS_REST_URL'))
+      .sort()
+      .map((k): [string, string] => [k, k.replace(/_URL$/, '_TOKEN')]),
+  ];
+  for (const [u, t] of pairs) {
+    const url = vars[u]?.trim();
+    const token = vars[t]?.trim();
+    if (url && token && /^https:\/\//.test(url)) return { url, token };
+  }
+  return {};
+}
+
 /** Settings from environment variables (Vercel / Node). */
 export function envFromProcess(vars: Record<string, string | undefined>): Env {
+  const redis = redisFromEnv(vars);
   const production = vars.VERCEL_PROJECT_PRODUCTION_URL ? `https://${vars.VERCEL_PROJECT_PRODUCTION_URL}` : '';
   return {
     TELEGRAM_BOT_TOKEN: (vars.TELEGRAM_BOT_TOKEN ?? '').trim(),
@@ -212,8 +234,8 @@ export function envFromProcess(vars: Record<string, string | undefined>): Env {
     ALLOWED_ORIGINS: vars.ALLOWED_ORIGINS || [DEFAULT_ORIGIN, production].filter(Boolean).join(','),
     TELEGRAM_API: vars.TELEGRAM_API,
     ADMIN_IDS: vars.ADMIN_IDS,
-    KV_URL: vars.KV_REST_API_URL || vars.UPSTASH_REDIS_REST_URL,
-    KV_TOKEN: vars.KV_REST_API_TOKEN || vars.UPSTASH_REDIS_REST_TOKEN,
+    KV_URL: redis.url,
+    KV_TOKEN: redis.token,
     STORE: vars.STORE,
     CRYPTO_PAY_TOKEN: vars.CRYPTO_PAY_TOKEN?.trim(),
     CRYPTO_PAY_NETWORK: vars.CRYPTO_PAY_NETWORK?.trim().toLowerCase(),

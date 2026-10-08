@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { envFromProcess, handle, type Env } from '../../worker/src/app';
+import { envFromProcess, handle, redisFromEnv, type Env } from '../../worker/src/app';
 import cfWorker from '../../worker/src/index';
 import { signInitData, validateInitData, webhookSecret } from '../../worker/src/telegram';
 
@@ -172,6 +172,16 @@ describe('POST /api/telegram (webhook)', () => {
 });
 
 describe('platform entry points', () => {
+  it('finds the Upstash Redis REST settings under any integration prefix', () => {
+    expect(redisFromEnv({ KV_REST_API_URL: 'https://a.upstash.io', KV_REST_API_TOKEN: 't1' })).toEqual({ url: 'https://a.upstash.io', token: 't1' });
+    expect(redisFromEnv({ UPSTASH_REDIS_REST_URL: 'https://b.upstash.io', UPSTASH_REDIS_REST_TOKEN: 't2' })).toEqual({ url: 'https://b.upstash.io', token: 't2' });
+    expect(redisFromEnv({ STORAGE_REST_API_URL: 'https://c.upstash.io', STORAGE_REST_API_TOKEN: 't3', STORAGE_URL: 'rediss://x' })).toEqual({ url: 'https://c.upstash.io', token: 't3' });
+    expect(redisFromEnv({ STORAGE_KV_REST_API_URL: 'https://d.upstash.io', STORAGE_KV_REST_API_TOKEN: 't4' })).toEqual({ url: 'https://d.upstash.io', token: 't4' });
+    // A TCP address alone (REDIS_URL) is not the REST API.
+    expect(redisFromEnv({ REDIS_URL: 'rediss://default:x@e.upstash.io:6379' })).toEqual({});
+    expect(envFromProcess({ STORAGE_REST_API_URL: 'https://c.upstash.io', STORAGE_REST_API_TOKEN: 't3' })).toMatchObject({ KV_URL: 'https://c.upstash.io', KV_TOKEN: 't3' });
+  });
+
   it('derives settings from environment variables (Vercel)', () => {
     const e = envFromProcess({ TELEGRAM_BOT_TOKEN: ' 1:x ', VERCEL_PROJECT_PRODUCTION_URL: 'emoji.vercel.app' });
     expect(e.TELEGRAM_BOT_TOKEN).toBe('1:x');

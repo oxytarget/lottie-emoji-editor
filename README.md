@@ -182,7 +182,8 @@ MVP веб-застосунку (і Telegram Mini App) для створення
 
 **Налаштування (Vercel → Settings → Environment Variables, потім Redeploy):**
 1. Сховище: *Storage → Create → Upstash for Redis* (або Marketplace → Upstash) і підключити до проєкту — з'являться
-   `KV_REST_API_URL` і `KV_REST_API_TOKEN` (або `UPSTASH_REDIS_REST_URL`/`_TOKEN`). Без нього генерації безкоштовні,
+   `KV_REST_API_URL` і `KV_REST_API_TOKEN` (або `UPSTASH_REDIS_REST_URL`/`_TOKEN`; з власним префіксом —
+   `<PREFIX>_REST_API_URL`/`_TOKEN`, теж підхоплюються). Без нього генерації безкоштовні,
    а адмін усе одно бачить розширений редактор.
 2. `ADMIN_IDS` — ваш Telegram ID (бот покаже на `/id`).
 3. Crypto Bot: у [@CryptoBot](https://t.me/CryptoBot) → Crypto Pay → Create App → токен у `CRYPTO_PAY_TOKEN`
