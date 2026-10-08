@@ -111,7 +111,21 @@ function HistoryList({ limit }: { limit?: number }) {
   const items = useHistoryItems();
   const [open, setOpen] = useState<StoredResult | null>(null);
   const shown = limit ? items.slice(0, limit) : items;
-  if (!shown.length) return <p className="hint">{t('historyEmpty')}</p>;
+  if (!shown.length)
+    return limit ? (
+      <p className="hint">{t('historyEmpty')}</p>
+    ) : (
+      <div className="c-empty">
+        <span className="c-empty-icon">
+          <ClockIcon width={30} height={30} />
+        </span>
+        <strong>{t('historyEmpty')}</strong>
+        <p className="hint">{t('historyEmptyText')}</p>
+        <button type="button" className="primary-btn" onClick={() => useNav.getState().go('create')}>
+          <SparkleIcon /> {t('createCta')}
+        </button>
+      </div>
+    );
   return (
     <>
       <ul className="c-history">
@@ -296,6 +310,9 @@ export function ClientApp({ compiled, theme, onTheme }: { compiled: Compiled; th
     <div className="app c-app">
       <header className="topbar">
         <h1 className="topbar-title">{t(TITLES[screen])}</h1>
+        <span className="c-beta" title={t('beta')}>
+          BETA
+        </span>
         <ClientNav />
         <BalanceChip />
       </header>

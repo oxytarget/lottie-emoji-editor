@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { canUseBot, packsAvailable } from '../lib/botApi';
 import { haptic, isTelegram, openTelegramLink } from '../lib/telegram';
 import { useAccount } from '../state/account';
@@ -10,11 +10,39 @@ import { useCT } from './i18n';
 import type { StoredResult } from './results';
 import { useNav } from './state';
 
-/** A sheet from the bottom (a dialog on wide screens), closed by the backdrop, ✕ or Escape. */
+const EXIT_MS = 240;
+const reducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/** Closes the sheet around: plays the closing animation, then `onClose`, then `then`. */
+const SheetCloser = createContext<(then?: () => void) => void>((then) => then?.());
+export const useSheetClose = () => useContext(SheetCloser);
+
+/**
+ * A sheet from the bottom (a dialog on wide screens), closed by the backdrop, ✕, Escape or a SheetButton — always
+ * with its closing animation (slides down / fades) before it goes away.
+ */
 export function Sheet({ title, onClose, children, className = '' }: { title: string; onClose: () => void; children: ReactNode; className?: string }) {
   const t = useCT();
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const timer = useRef(0);
+  const close = useCallback((then?: () => void) => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    timer.current = window.setTimeout(
+      () => {
+        onCloseRef.current();
+        then?.();
+      },
+      reducedMotion() ? 0 : EXIT_MS,
+    );
+  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -22,19 +50,31 @@ export function Sheet({ title, onClose, children, className = '' }: { title: str
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, [close]);
   return (
-    <div className="sheet-backdrop" data-state="open" onClick={onClose}>
-      <div className={`sheet ${className}`} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
-        <div className="sheet-head">
-          <h2>{title}</h2>
-          <button type="button" className="icon-btn is-round" aria-label={t('close')} onClick={onClose}>
-            <CloseIcon />
-          </button>
+    <SheetCloser.Provider value={close}>
+      <div className="sheet-backdrop" data-state={closing ? 'closed' : 'open'} onClick={() => close()}>
+        <div className={`sheet ${className}`} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+          <div className="sheet-head">
+            <h2>{title}</h2>
+            <button type="button" className="icon-btn is-round" aria-label={t('close')} onClick={() => close()}>
+              <CloseIcon />
+            </button>
+          </div>
+          {children}
         </div>
-        {children}
       </div>
-    </div>
+    </SheetCloser.Provider>
+  );
+}
+
+/** A button that closes the sheet (with its animation) and then does `then`. */
+export function SheetButton({ then, className, children }: { then?: () => void; className: string; children: ReactNode }) {
+  const close = useSheetClose();
+  return (
+    <button type="button" className={className} onClick={() => close(then)}>
+      {children}
+    </button>
   );
 }
 
@@ -102,9 +142,9 @@ export function ResultSheet({ result, onClose, onAnother }: { result: StoredResu
         </p>
       )}
       {onAnother && (
-        <button type="button" className="link-btn is-center" onClick={onAnother}>
+        <SheetButton className="link-btn is-center" then={onAnother}>
           {t('another')}
-        </button>
+        </SheetButton>
       )}
     </Sheet>
   );
@@ -135,19 +175,10 @@ export function UpsellSheet({ problem, onClose }: { problem: GenerateError; onCl
             balance: problem.balance ?? account?.balance ?? 0,
           })}
         </p>
-        <button
-          type="button"
-          className="primary-btn"
-          onClick={() => {
-            onClose();
-            go('topup');
-          }}
-        >
+        <SheetButton className="primary-btn" then={() => go('topup')}>
           <SparkleIcon /> {t('topUp')}
-        </button>
-        <button type="button" className="link-btn is-center" onClick={onClose}>
-          {t('later')}
-        </button>
+        </SheetButton>
+        <SheetButton className="link-btn is-center">{t('later')}</SheetButton>
       </Sheet>
     );
   }
@@ -158,19 +189,10 @@ export function UpsellSheet({ problem, onClose }: { problem: GenerateError; onCl
           <CrownIcon width={34} height={34} />
         </div>
         <p className="hint is-center">{t(problem.reason === 'batch' ? 'proNeededBatch' : problem.reason === 'font' ? 'proNeededFont' : 'proNeededTemplate')}</p>
-        <button
-          type="button"
-          className="primary-btn c-pro-btn"
-          onClick={() => {
-            onClose();
-            go('pro');
-          }}
-        >
+        <SheetButton className="primary-btn c-pro-btn" then={() => go('pro')}>
           <CrownIcon /> {t('getPro')}
-        </button>
-        <button type="button" className="link-btn is-center" onClick={onClose}>
-          {t('later')}
-        </button>
+        </SheetButton>
+        <SheetButton className="link-btn is-center">{t('later')}</SheetButton>
       </Sheet>
     );
   }

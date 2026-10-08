@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_FONT_ID, fontOptions, hasFont, registerCssFont } from '../content/fonts';
 import { luminance } from '../lottie/color';
 import { solid } from '../lottie/paint';
 import { fetchTemplateEdits } from '../lib/accountApi';
 import { haptic } from '../lib/telegram';
 import { isPro, useAccount } from '../state/account';
+import { CONTENT_CLASS } from '../lottie/compose';
+import { compileOne } from '../state/compile';
 import { loadPack } from '../state/packs';
 import { PRESETS } from '../state/presets';
 import { usePoster } from '../state/posters';
 import { useEditor, type PackEdit } from '../state/store';
 import { useUi } from '../state/ui';
 import type { Compiled, CompiledEmoji } from '../state/useCompiled';
+import { CanvasEditor, type ContentXf } from '../components/CanvasEditor';
 import { Slider } from '../components/controls';
 import { CameraIcon, CheckIcon, CrownIcon, ImageIcon, ResetIcon, TrashIcon, TypeIcon, WarningIcon } from '../components/icons';
 import { LottieView, useInView } from '../components/LottieView';
@@ -297,6 +300,77 @@ function TextStep({ onUpsell }: { onUpsell: (e: GenerateError) => void }) {
   );
 }
 
+const DEFAULT_XF: ContentXf = { scale: 1, offsetX: 0, offsetY: 0, rotation: 0, stretch: 1 };
+const sameXf = (a: ContentXf, b: ContentXf) =>
+  a.scale === b.scale && a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.rotation === b.rotation && a.stretch === b.stretch;
+
+/**
+ * The chosen template with the client's design on it, edited with the fingers right on the figure (the advanced
+ * editor's frame): drag to move, two fingers to resize and rotate, corners and edges to stretch.
+ */
+function DesignCanvas({ emoji, compiled }: { emoji: CompiledEmoji; compiled: Compiled }) {
+  const t = useCT();
+  const scale = useEditor((s) => s.scale);
+  const offsetX = useEditor((s) => s.offsetX);
+  const offsetY = useEditor((s) => s.offsetY);
+  const rotation = useEditor((s) => s.rotation);
+  const stretch = useEditor((s) => s.stretch);
+  const setTransform = useEditor((s) => s.setTransform);
+  const ratioLock = useUi((u) => u.ratioLock);
+  const setRatioLock = useUi((u) => u.setRatioLock);
+  const stage = useRef<HTMLDivElement>(null);
+  const frame = useRef(0);
+  const pendingXf = useRef<ContentXf | null>(null);
+  const [live, setLive] = useState<ContentXf | null>(null);
+  const [editing, setEditing] = useState(false);
+  const stored = useMemo(() => ({ scale, offsetX, offsetY, rotation, stretch }), [scale, offsetX, offsetY, rotation, stretch]);
+  const xf = live ?? stored;
+  // While dragging only this animation is rebuilt, once per frame; then the full compile takes over.
+  const liveJson = useMemo(() => (live ? compileOne({ ...compiled.input, ...live }, emoji.id) : null), [live, compiled.input, emoji.id]);
+  useEffect(() => {
+    if (live && !editing && !compiled.pending && sameXf(live, stored)) setLive(null);
+  }, [live, editing, compiled.pending, stored]);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  const onLive = useCallback((next: ContentXf) => {
+    pendingXf.current = next;
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      if (pendingXf.current) setLive(pendingXf.current);
+    });
+  }, []);
+  const onCommit = (next: ContentXf) => {
+    setLive(next);
+    setTransform(next);
+  };
+  const moved = !sameXf(xf, DEFAULT_XF);
+  return (
+    <>
+      <div className="c-stage" ref={stage}>
+        <LottieView json={liveJson ?? emoji.preview ?? emoji.json} playing={!editing} className="c-preview-anim" label={t('preview')} />
+        <CanvasEditor
+          stage={stage}
+          target={CONTENT_CLASS}
+          value={xf}
+          onLive={onLive}
+          onCommit={onCommit}
+          onActive={setEditing}
+          locked={ratioLock}
+          onToggleLock={() => {
+            setRatioLock(!ratioLock);
+            haptic();
+          }}
+        />
+      </div>
+      {moved && (
+        <button type="button" className="pill-btn is-compact is-pop-in" onClick={() => onCommit(DEFAULT_XF)}>
+          <ResetIcon width={14} height={14} /> {t('resetTweaks')}
+        </button>
+      )}
+    </>
+  );
+}
+
 function Tweaks() {
   const t = useCT();
   const scale = useEditor((s) => s.scale);
@@ -313,14 +387,14 @@ function Tweaks() {
         <Slider
           label={t('size')}
           value={scale}
-          min={0.7}
-          max={1.3}
+          min={0.2}
+          max={2}
           step={0.05}
           format={(v) => `${Math.round(v * 100)}%`}
           onChange={(v) => set('scale', v)}
           onReset={() => set('scale', 1)}
         />
-        <Slider label={t('position')} value={offsetY} min={-40} max={40} step={1} onChange={(v) => set('offsetY', v)} onReset={() => set('offsetY', 0)} />
+        <Slider label={t('position')} value={offsetY} min={-120} max={120} step={1} onChange={(v) => set('offsetY', v)} onReset={() => set('offsetY', 0)} />
       </div>
       <span className="label">{t('colors')}</span>
       <div className="c-presets">
@@ -339,14 +413,7 @@ function Tweaks() {
           );
         })}
       </div>
-      <button
-        type="button"
-        className="link-btn"
-        onClick={() => {
-          set('scale', 1);
-          set('offsetY', 0);
-        }}
-      >
+      <button type="button" className="link-btn" onClick={() => useEditor.getState().setTransform(DEFAULT_XF)}>
         <ResetIcon width={14} height={14} /> {t('resetTweaks')}
       </button>
     </details>
@@ -401,7 +468,13 @@ export function CreateScreen({ compiled }: { compiled: Compiled }) {
     <>
       <div className="page c-create">
         <section className="card c-preview">
-          {chosen ? <LottieView json={chosen.json} className="c-preview-anim" label={t('preview')} /> : <div className="c-preview-anim" />}
+          {chosen && !empty ? (
+            <DesignCanvas emoji={chosen} compiled={compiled} />
+          ) : chosen ? (
+            <LottieView json={chosen.json} className="c-preview-anim" label={t('preview')} />
+          ) : (
+            <div className="c-preview-anim" />
+          )}
           <p className="hint">{empty ? t('emptyDesign') : t('autoNote')}</p>
           {tooBig && (
             <p className="note is-warn">
@@ -426,10 +499,11 @@ export function CreateScreen({ compiled }: { compiled: Compiled }) {
           <button
             type="button"
             className={`chip-btn c-all${all && pro ? ' is-active' : ''}`}
+            title={t('allTemplates', { n: templates.filter((e) => templateAccess(e.id, e.pack) === 'ok').length })}
             onClick={() => (pro ? setInput('all', !all) : setProblem({ kind: 'pro', reason: 'batch' }))}
           >
             {!pro ? <CrownIcon width={14} height={14} /> : <TypeIcon width={14} height={14} />}{' '}
-            {t('allTemplates', {
+            {t('allShort', {
               n: templates.filter((e) => templateAccess(e.id, e.pack) === 'ok').length,
             })}
           </button>
