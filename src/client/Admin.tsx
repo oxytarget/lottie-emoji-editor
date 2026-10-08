@@ -93,7 +93,7 @@ function Settings({ config, onSaved }: { config: Editable; onSaved: (c: Editable
           onClick={() =>
             setDraft({
               ...draft,
-              packages: [...draft.packages, { id: `p${Date.now().toString(36)}`, count: 10, usd: 1.99 }],
+              packages: [...draft.packages, { id: `p${Date.now().toString(36)}`, count: 10, usd: 10 }],
             })
           }
         >

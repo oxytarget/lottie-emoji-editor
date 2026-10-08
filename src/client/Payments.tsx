@@ -363,7 +363,10 @@ export function TopUpScreen() {
   const [chosen, setChosen] = useState(config.packages[1]?.id ?? config.packages[0]?.id);
   const [paying, setPaying] = useState<PayMethod | null>(null);
   const pkg = config.packages.find((p) => p.id === chosen) ?? config.packages[0];
-  const best = config.packages.reduce((a, b) => (b.usd / b.count < a.usd / a.count ? b : a), config.packages[0]);
+  const each = (p: { usd: number; count: number }) => p.usd / p.count;
+  const best = config.packages.reduce((a, b) => (each(b) < each(a) ? b : a), config.packages[0]);
+  // "Best value" only when some package really is cheaper per generation.
+  const showBest = !!best && config.packages.some((p) => each(p) - each(best) > 0.0005);
   return (
     <div className="page">
       <section className="card c-balance-card">
@@ -386,7 +389,7 @@ export function TopUpScreen() {
               aria-pressed={p.id === pkg?.id}
               onClick={() => setChosen(p.id)}
             >
-              {p.id === best?.id && config.packages.length > 1 && <em className="c-best">{t('bestValue')}</em>}
+              {showBest && p.id === best?.id && <em className="c-best">{t('bestValue')}</em>}
               <span className="c-package-count">
                 <SparkleIcon width={18} height={18} /> {p.count}
               </span>
@@ -394,7 +397,7 @@ export function TopUpScreen() {
               <strong className="c-package-price">{money(p.usd)}</strong>
               <small>
                 {t('perOne', {
-                  p: `$${(p.usd / p.count).toFixed(3).replace(/0+$/, '')}`,
+                  p: `$${Number(each(p).toFixed(3))}`,
                 })}
               </small>
             </button>

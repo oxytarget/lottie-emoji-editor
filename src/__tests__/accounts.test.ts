@@ -142,7 +142,7 @@ describe('payments', () => {
   it('Crypto Bot: credits only after the invoice is paid, and only once', async () => {
     const { invoices } = mockProviders();
     const created = await call('pay', 1, { item: 'pkg:p25', method: 'cryptobot' });
-    expect(created.body.payment).toMatchObject({ status: 'pending', count: 25, usd: 3.99, url: 'https://t.me/CryptoBot?start=IV1' });
+    expect(created.body.payment).toMatchObject({ status: 'pending', count: 25, usd: 25, url: 'https://t.me/CryptoBot?start=IV1' });
     const id = created.body.payment.id;
     // "I paid" without paying: nothing.
     expect((await call('pay-status', 1, { id })).body).toMatchObject({ payment: { status: 'pending' }, account: { balance: 3 } });
@@ -164,7 +164,7 @@ describe('payments', () => {
     expect((await hook(await cryptoPaySignature('cp-token', raw))).status).toBe(200);
     expect((await hook(await cryptoPaySignature('cp-token', raw))).status).toBe(200);
     const me = (await call('me', 1)).body.account;
-    expect(me).toMatchObject({ role: 'pro', balance: 33 });
+    expect(me).toMatchObject({ role: 'pro', balance: 8 });
     expect(me.proUntil).toBeGreaterThan(Date.now() + 29 * 86_400_000);
     expect((await call('pay-status', 1, { id })).body.payment.status).toBe('paid');
   });
@@ -172,13 +172,13 @@ describe('payments', () => {
   it('TON: the transfer with our comment and enough TON credits; wrong ones do not', async () => {
     const { txs } = mockProviders();
     const p = (await call('pay', 1, { item: 'pkg:p10', method: 'ton' })).body.payment;
-    // $1.99 at $5 per TON = 0.398 TON.
-    expect(p.ton).toEqual({ address: 'UQshop', nano: '398000000', comment: `ES-${p.id}` });
+    // $10 at $5 per GRAM = 2 GRAM.
+    expect(p.ton).toEqual({ address: 'UQshop', nano: '2000000000', comment: `ES-${p.id}` });
     const now = Math.floor(Date.now() / 1000);
     txs.push({ hash: 'h1', now, in_msg: { value: '100000000', message_content: { decoded: { type: 'text_comment', comment: p.ton.comment } } } });
-    txs.push({ hash: 'h2', now, in_msg: { value: '398000000', message_content: { decoded: { type: 'text_comment', comment: 'ES-other' } } } });
+    txs.push({ hash: 'h2', now, in_msg: { value: '2000000000', message_content: { decoded: { type: 'text_comment', comment: 'ES-other' } } } });
     expect((await call('pay-status', 1, { id: p.id })).body.payment.status).toBe('pending');
-    txs.push({ hash: 'h3', now, in_msg: { value: '398000000', message_content: { decoded: { type: 'text_comment', comment: p.ton.comment } } } });
+    txs.push({ hash: 'h3', now, in_msg: { value: '2000000000', message_content: { decoded: { type: 'text_comment', comment: p.ton.comment } } } });
     const paid = (await call('pay-status', 1, { id: p.id })).body;
     expect(paid).toMatchObject({ payment: { status: 'paid', proof: 'h3' }, account: { balance: 13 } });
     expect((await call('pay-status', 1, { id: p.id })).body.account.balance).toBe(13);
@@ -239,7 +239,7 @@ describe('invoice errors, Gram and the linked wallet', () => {
     const res = await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' });
     expect(res.body).toMatchObject({ ok: true, payment: { invoiceId: 7, url: 'https://t.me/CryptoBot?start=IV7' } });
     expect(calls.map((c) => c.body.paid_btn_url)).toEqual(['https://example.github.io/app/', undefined]);
-    expect(calls[1].body).toMatchObject({ currency_type: 'fiat', fiat: 'USD', amount: '1.99', payload: res.body.payment.id });
+    expect(calls[1].body).toMatchObject({ currency_type: 'fiat', fiat: 'USD', amount: '10.00', payload: res.body.payment.id });
     // A non-web app address never goes into the button.
     const plain = cryptoPayAnswers(() => ({ ok: true, result: { invoice_id: 8, status: 'active' } }));
     await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' }, { ...base, APP_URL: 'tg://resolve?domain=bot' });
@@ -256,10 +256,10 @@ describe('invoice errors, Gram and the linked wallet', () => {
       ],
     }));
     const gram = await call('pay', 1, { item: 'pkg:p10', method: 'ton' }, env);
-    // $1.99 / $2 → 0.995 GRAM.
-    expect(gram.body.payment.ton).toMatchObject({ address: 'UQshop', nano: '995000000' });
+    // $10 / $2 → 5 GRAM.
+    expect(gram.body.payment.ton).toMatchObject({ address: 'UQshop', nano: '5000000000' });
     cryptoPayAnswers(() => ({ ok: true, result: [{ is_valid: true, source: 'TON', target: 'USD', rate: '1' }] }));
-    expect((await call('pay', 1, { item: 'pkg:p10', method: 'ton' }, env)).body.payment.ton.nano).toBe('1990000000');
+    expect((await call('pay', 1, { item: 'pkg:p10', method: 'ton' }, env)).body.payment.ton.nano).toBe('10000000000');
     cryptoPayAnswers(() => ({ ok: true, result: [] }));
     expect((await call('pay', 1, { item: 'pkg:p10', method: 'ton' }, env)).body.error).toBe('no-rate');
   });

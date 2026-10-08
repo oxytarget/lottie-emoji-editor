@@ -32,16 +32,17 @@ export interface AppConfig {
   templates: Record<string, { hidden?: boolean; pro?: boolean }>;
 }
 
+/** $1 per generation; PRO's bonus about matches its price, so PRO is no cheaper way to buy generations. */
 export const DEFAULT_CONFIG: AppConfig = {
   starter: 3,
   cost: 1,
   packages: [
-    { id: 'p10', count: 10, usd: 1.99 },
-    { id: 'p25', count: 25, usd: 3.99 },
-    { id: 'p50', count: 50, usd: 6.99 },
-    { id: 'p100', count: 100, usd: 11.99 },
+    { id: 'p10', count: 10, usd: 10 },
+    { id: 'p25', count: 25, usd: 25 },
+    { id: 'p50', count: 50, usd: 50 },
+    { id: 'p100', count: 100, usd: 100 },
   ],
-  pro: { usd: 4.99, days: 30, bonus: 30 },
+  pro: { usd: 4.99, days: 30, bonus: 5 },
   templates: {},
 };
 
