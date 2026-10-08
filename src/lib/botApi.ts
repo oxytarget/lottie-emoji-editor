@@ -441,7 +441,7 @@ export async function createPacksSplit<T extends OutgoingFile & { emoji: string 
   const packs: PackResult[] = [];
   const chunks: T[][] = [];
   for (let i = 0; i < opts.items.length; i += CREATE_BATCH) chunks.push(opts.items.slice(i, i + CREATE_BATCH));
-  const base = Array.from(opts.title).slice(0, 58).join('').trim() || 'Emoji Studio';
+  const base = Array.from(opts.title).slice(0, 58).join('').trim() || 'MojiMotion';
   let done = 0;
   for (const [i, chunk] of chunks.entries()) {
     const title = chunks.length > 1 ? `${base} ${i + 1}` : base;

@@ -203,6 +203,63 @@ p {
   border-bottom: 1px solid var(--line);
 }
 
+/* Logo and name; the section under them on phones. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.brand-logo {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  user-select: none;
+}
+
+.brand-text {
+  display: grid;
+  min-width: 0;
+}
+
+.brand-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.brand-section {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 960px) {
+  .brand {
+    margin-right: 0;
+  }
+  .brand-section {
+    display: none;
+  }
+}
+
+.brand ~ .selected-chip,
+.brand ~ .c-balance-chip {
+  margin-left: 0;
+}
+
 .topbar-title {
   font-size: 22px;
   font-weight: 900;
@@ -5595,19 +5652,9 @@ a.primary-btn {
   text-transform: none;
 }
 
-/* Long section names stay on one line next to the BETA badge and the balance. */
-.c-app .topbar-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: clamp(18px, 5.4vw, 22px);
-}
-
 .c-beta {
   flex: none;
-  margin-right: auto;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: linear-gradient(120deg, var(--accent-fill), #ec4899);
   color: #fff;
@@ -5619,14 +5666,6 @@ a.primary-btn {
   cursor: help;
 }
 
-.topbar-title + .c-beta {
-  margin-left: -4px;
-}
-
-.c-beta ~ .c-balance-chip,
-.c-beta ~ .selected-chip {
-  margin-left: 0;
-}
 
 .c-empty {
   display: grid;

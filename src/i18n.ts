@@ -1,7 +1,7 @@
 import type { Lang } from './templates/types';
 
 const dict = {
-  appTitle: { uk: 'Emoji Studio', ru: 'Emoji Studio', en: 'Emoji Studio' },
+  appTitle: { uk: 'MojiMotion', ru: 'MojiMotion', en: 'MojiMotion' },
   appSubtitle: { uk: 'Редактор Lottie-емодзі', ru: 'Редактор Lottie-эмодзи', en: 'Lottie emoji editor' },
   summaryText: { uk: 'Текст', ru: 'Текст', en: 'Text' },
   summaryLogo: { uk: 'Лого', ru: 'Лого', en: 'Logo' },

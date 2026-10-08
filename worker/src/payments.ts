@@ -124,7 +124,7 @@ export async function createCryptoInvoice(env: Env, p: Payment, title: string): 
     currency_type: 'fiat',
     fiat: 'USD',
     amount: p.usd.toFixed(2),
-    description: `Emoji Studio — ${title}`.slice(0, 1024),
+    description: `MojiMotion — ${title}`.slice(0, 1024),
     payload: p.id,
     allow_comments: false,
     expires_in: 3600,

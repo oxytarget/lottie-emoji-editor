@@ -46,7 +46,7 @@ export function sanitizeEmoji(input: unknown): string {
 
 export function sanitizeTitle(input: unknown): string {
   const s = (typeof input === 'string' ? input : '').replace(/\s+/g, ' ').trim();
-  return Array.from(s).slice(0, 64).join('') || 'Emoji Studio';
+  return Array.from(s).slice(0, 64).join('') || 'MojiMotion';
 }
 
 /** Pack names: letters/digits/underscores, start with a letter, no "__", end with _by_<bot>, ≤ 64 chars. */

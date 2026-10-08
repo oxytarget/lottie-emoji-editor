@@ -78,7 +78,7 @@ describe('pack helpers', () => {
     expect(sanitizeEmoji('abc')).toBe('⭐');
     expect(sanitizeEmoji('')).toBe('⭐');
     expect(sanitizeTitle('  My   pack ')).toBe('My pack');
-    expect(sanitizeTitle('')).toBe('Emoji Studio');
+    expect(sanitizeTitle('')).toBe('MojiMotion');
     expect(Array.from(sanitizeTitle('я'.repeat(100)))).toHaveLength(64);
   });
 

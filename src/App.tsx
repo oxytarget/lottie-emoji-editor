@@ -1,3 +1,4 @@
+import { Brand } from './components/Brand';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ColorsCard } from './components/ColorsCard';
 import { ContentCard } from './components/ContentCard';
@@ -216,8 +217,8 @@ function EditorApp({ compiled, theme, toggleTheme }: { compiled: Compiled; theme
   return (
     <div className={`app${nativeButton ? ' has-native-button' : ''}${painting ? ' is-painting' : ''}`} ref={appRef}>
       <header className="topbar">
-        {/* Phones: where you are; wide screens show the section bar instead. */}
-        <h1 className="topbar-title">{t(SECTION_TITLES[section])}</h1>
+        {/* Phones: where you are under the name; wide screens show the section bar instead. */}
+        <Brand section={t(SECTION_TITLES[section])} betaTitle="Beta" />
         <SectionNav />
         <button type="button" className="chip-btn c-exit-advanced" onClick={() => setAdvanced(false)} title="Client mode">
           <UserIcon width={16} height={16} />

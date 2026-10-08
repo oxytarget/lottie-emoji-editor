@@ -86,7 +86,7 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
   const linked = viaBot && usesLink();
   const canLink = !viaBot && packsAvailable() && !isTelegram();
 
-  const defaultTitle = (mode === 'logo' ? logo?.name.replace(/\.svg$/i, '') : text.split('\n')[0])?.trim().slice(0, 64) || 'Emoji Studio';
+  const defaultTitle = (mode === 'logo' ? logo?.name.replace(/\.svg$/i, '') : text.split('\n')[0])?.trim().slice(0, 64) || 'MojiMotion';
   const [title, setTitle] = useState(defaultTitle);
   const [target, setTarget] = useState<string>(() =>
     packJob && packs.some((p) => p.name === packJob.pack) && emojis.some((e) => !packJob.ids.includes(e.id)) && emojis.some((e) => packJob.ids.includes(e.id))
@@ -271,7 +271,7 @@ export function ExportSheet({ emojis, onClose, state = 'open' }: { emojis: Compi
             {!targetPack && (
               <label className="field">
                 <span className="label">{t('packTitle')}</span>
-                <input value={title} maxLength={64} onChange={(e) => setTitle(e.target.value)} placeholder="Emoji Studio" />
+                <input value={title} maxLength={64} onChange={(e) => setTitle(e.target.value)} placeholder="MojiMotion" />
               </label>
             )}
             {canSplit && (

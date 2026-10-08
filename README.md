@@ -1,4 +1,6 @@
-# Emoji Studio — редактор анімованих Lottie-емодзі
+# MojiMotion — анімовані емодзі для Telegram
+
+<img src="public/logo-128.png" width="64" alt="MojiMotion" />
 
 MVP веб-застосунку (і Telegram Mini App) для створення анімованих емодзі в стилі Auto Emoji Maker:
 вводите текст **або завантажуєте SVG-логотип**, обираєте персонажів, кольори та розмір і отримуєте готові

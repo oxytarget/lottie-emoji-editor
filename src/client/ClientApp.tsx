@@ -14,6 +14,7 @@ import { ClockIcon, CrownIcon, GlobeIcon, HomeIcon, MoonIcon, PenIcon, ShieldIco
 import { useInView } from '../components/LottieView';
 import { TelegramLinkCard, unlink } from '../components/TelegramLink';
 import { AdminScreen } from './Admin';
+import { Brand } from '../components/Brand';
 import { CreateScreen, useApplyInputs } from './CreateScreen';
 import { formatDate, formatDateTime, useCT, type ClientKey } from './i18n';
 import { BalanceChip, PendingPaymentBar, ProScreen, TopUpScreen, WalletCard } from './Payments';
@@ -309,10 +310,7 @@ export function ClientApp({ compiled, theme, onTheme }: { compiled: Compiled; th
   return (
     <div className="app c-app">
       <header className="topbar">
-        <h1 className="topbar-title">{t(TITLES[screen])}</h1>
-        <span className="c-beta" title={t('beta')}>
-          BETA
-        </span>
+        <Brand section={t(TITLES[screen])} betaTitle={t('beta')} />
         <ClientNav />
         <BalanceChip />
       </header>
