@@ -11,6 +11,8 @@ export interface Account {
   role: Role;
   balance: number;
   proUntil: number;
+  /** The Gram (TON) wallet linked on the site. */
+  wallet?: { address: string; app?: string; at: number };
 }
 
 export interface Package {
@@ -49,7 +51,7 @@ export interface Payment {
   paidAt?: number;
   url?: string;
   miniAppUrl?: string;
-  ton?: { address: string; nano: string; comment: string };
+  ton?: { address: string; nano: string; comment: string; from?: string };
 }
 
 export type ApiResult<T> = ({ ok: true } & T) | { ok: false; error: string; status: number; [k: string]: unknown };
@@ -85,6 +87,9 @@ export const requestGeneration = (id: string, templates: string[], title: string
 export const createPayment = (item: string, method: PayMethod) => post<{ payment: Payment }>('pay', { item, method });
 
 export const paymentStatus = (id: string) => post<{ payment: Payment; account: Account }>('pay-status', { id });
+
+/** Links the wallet connected with TON Connect to the account ('' unlinks). */
+export const bindWallet = (address: string, app: string) => post<{ account: Account }>('wallet', { address, app });
 
 export const adminCall = <T>(action: string, body: Record<string, unknown> = {}) => post<T>('admin', { action, ...body });
 

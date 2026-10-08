@@ -8,8 +8,9 @@
  *   POST /api/app/cryptopay  — Crypto Pay webhook (signed with the app token): credits right when an invoice is paid.
  *
  * Crypto Pay: https://help.crypt.bot/crypto-pay-api — invoices priced in USD, paid in any crypto the bot accepts.
- * TON: a transfer to TON_WALLET with a unique comment, sent from any wallet (TON Connect in the editor) and found
- * on the blockchain by that comment and amount.
+ * Gram (GRAM, the TON blockchain's coin — Toncoin until June 2026; the method id stays "ton"): a transfer to
+ * TON_WALLET with a unique comment, sent from the wallet the user connected (TON Connect) or any other, and found on
+ * the blockchain by that comment and amount — the "invoice-based deposits" of https://docs.ton.org/applications/payments/gram.
  */
 import { account, accountRequest, keys, readConfig, type AppConfig } from './account.js';
 import { json, type Env } from './shared.js';
@@ -35,8 +36,8 @@ export interface Payment {
   invoiceId?: number;
   url?: string;
   miniAppUrl?: string;
-  /** TON: what to send. */
-  ton?: { address: string; nano: string; comment: string };
+  /** Gram (TON): what to send (nano = 10⁻⁹ GRAM), and the wallet linked when the payment was made. */
+  ton?: { address: string; nano: string; comment: string; from?: string };
   /** TON transaction hash, or the asset Crypto Bot was paid in. */
   proof?: string;
 }
@@ -83,15 +84,59 @@ interface Invoice {
   paid_asset?: string;
 }
 
+/** A Crypto Pay error; `reason` is the API's error name (UNAUTHORIZED, PAID_BTN_URL_INVALID…) — safe to show. */
+export class CryptoPayError extends Error {
+  constructor(
+    method: string,
+    readonly reason: string,
+  ) {
+    super(`crypto pay ${method}: ${reason}`);
+  }
+}
+
 async function cryptoPay<T>(env: Env, method: string, params: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${cryptoPayBase(env)}/api/${method}`, {
-    method: 'POST',
-    headers: { 'Crypto-Pay-API-Token': env.CRYPTO_PAY_TOKEN ?? '', 'content-type': 'application/json' },
-    body: JSON.stringify(params),
-  });
-  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: T; error?: { name?: string } | string };
-  if (!body.ok) throw new Error(`crypto pay ${method}: ${typeof body.error === 'string' ? body.error : (body.error?.name ?? res.status)}`);
+  let res: Response;
+  try {
+    res = await fetch(`${cryptoPayBase(env)}/api/${method}`, {
+      method: 'POST',
+      headers: { 'Crypto-Pay-API-Token': env.CRYPTO_PAY_TOKEN ?? '', 'content-type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+  } catch {
+    throw new CryptoPayError(method, 'NETWORK');
+  }
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: T; error?: { name?: string; code?: number } | string };
+  if (!body.ok) {
+    const name = typeof body.error === 'string' ? body.error : (body.error?.name ?? `HTTP_${res.status}`);
+    throw new CryptoPayError(method, String(name).replace(/[^\w .:-]/g, '').slice(0, 80) || `HTTP_${res.status}`);
+  }
   return body.result as T;
+}
+
+const isHttpUrl = (url: string | undefined) => !!url && /^https?:\/\/[^\s]+$/i.test(url);
+
+/**
+ * A USD invoice, with a "back to the app" button after paying when the app has a web address. Should Crypto Pay
+ * refuse the button (its URL rules), the invoice is made without it — a payment matters more than the button.
+ */
+export async function createCryptoInvoice(env: Env, p: Payment, title: string): Promise<Invoice> {
+  const params: Record<string, unknown> = {
+    currency_type: 'fiat',
+    fiat: 'USD',
+    amount: p.usd.toFixed(2),
+    description: `Emoji Studio — ${title}`.slice(0, 1024),
+    payload: p.id,
+    allow_comments: false,
+    expires_in: 3600,
+  };
+  const button = isHttpUrl(env.APP_URL) ? { paid_btn_name: 'callback', paid_btn_url: env.APP_URL } : null;
+  try {
+    return await cryptoPay<Invoice>(env, 'createInvoice', { ...params, ...button });
+  } catch (err) {
+    if (!button || !(err instanceof CryptoPayError) || !/PAID_BTN|URL/i.test(err.reason)) throw err;
+    console.warn('crypto pay refused the paid button, creating the invoice without it', err.reason);
+    return cryptoPay<Invoice>(env, 'createInvoice', params);
+  }
 }
 
 /** Whether an invoice settles this payment: paid, ours, for at least the price. */
@@ -113,14 +158,14 @@ export async function cryptoPaySignature(token: string, body: string): Promise<s
 
 const toncenterBase = (env: Env) => (env.TONCENTER_API ?? (env.TON_NETWORK === 'testnet' ? 'https://testnet.toncenter.com' : 'https://toncenter.com')).replace(/\/+$/, '');
 
-/** TON price in USD: the admin's fixed rate, else Crypto Pay's exchange rates. */
+/** GRAM (TON) price in USD: the admin's fixed rate, else Crypto Pay's exchange rates (GRAM, or TON before the rename). */
 async function tonUsdRate(env: Env): Promise<number | null> {
   const fixed = Number(env.TON_USD_RATE);
   if (fixed > 0) return fixed;
   if (!env.CRYPTO_PAY_TOKEN) return null;
   try {
     const rates = await cryptoPay<Array<{ is_valid: boolean; source: string; target: string; rate: string }>>(env, 'getExchangeRates', {});
-    const r = rates.find((x) => x.source === 'TON' && x.target === 'USD' && x.is_valid);
+    const r = ['GRAM', 'TON'].map((asset) => rates.find((x) => x.source === asset && x.target === 'USD' && x.is_valid && Number(x.rate) > 0)).find(Boolean);
     return r ? Number(r.rate) : null;
   } catch {
     return null;
@@ -219,7 +264,7 @@ export async function handlePay(req: Request, env: Env, cors: Record<string, str
   const price = priceOf(config, String(r.body.item ?? ''));
   if (!price || (method !== 'cryptobot' && method !== 'ton')) return json({ ok: false, error: 'bad-request' }, 400, cors);
   if ((method === 'cryptobot' && !env.CRYPTO_PAY_TOKEN) || (method === 'ton' && !env.TON_WALLET)) return json({ ok: false, error: 'method-off' }, 503, cors);
-  await account(r.store, env, r.userId, config);
+  const acc = await account(r.store, env, r.userId, config);
   const p: Payment = {
     id: newId(),
     user: r.userId,
@@ -233,30 +278,21 @@ export async function handlePay(req: Request, env: Env, cors: Record<string, str
   };
   try {
     if (method === 'cryptobot') {
-      const inv = await cryptoPay<Invoice>(env, 'createInvoice', {
-        currency_type: 'fiat',
-        fiat: 'USD',
-        amount: price.usd.toFixed(2),
-        description: `Emoji Studio — ${price.title}`.slice(0, 1024),
-        payload: p.id,
-        paid_btn_name: 'callback',
-        paid_btn_url: env.APP_URL,
-        allow_comments: false,
-        expires_in: 3600,
-      });
+      const inv = await createCryptoInvoice(env, p, price.title);
       p.invoiceId = inv.invoice_id;
       p.url = inv.bot_invoice_url;
       p.miniAppUrl = inv.mini_app_invoice_url;
     } else {
       const rate = await tonUsdRate(env);
       if (!rate) return json({ ok: false, error: 'no-rate' }, 503, cors);
-      // Up to the next 0.001 TON.
+      // Up to the next 0.001 GRAM.
       const nano = BigInt(Math.ceil((price.usd / rate) * 1000)) * 1_000_000n;
-      p.ton = { address: env.TON_WALLET!, nano: nano.toString(), comment: `ES-${p.id}` };
+      p.ton = { address: env.TON_WALLET!, nano: nano.toString(), comment: `ES-${p.id}`, ...(acc.wallet ? { from: acc.wallet.address } : {}) };
     }
   } catch (err) {
     console.error('payment create failed', err instanceof Error ? err.message : err);
-    return json({ ok: false, error: 'provider' }, 502, cors);
+    // The provider's error name tells the admin what to fix (wrong token or network, …); it holds no secrets.
+    return json({ ok: false, error: 'provider', detail: err instanceof CryptoPayError ? err.reason : 'UNKNOWN' }, 502, cors);
   }
   await savePayment(r.store, p);
   await r.store.pushList(keys.payments, p.id, 500);

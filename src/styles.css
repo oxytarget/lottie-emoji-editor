@@ -5786,6 +5786,60 @@ a.primary-btn {
   line-height: 1.35;
 }
 
+.c-wallet {
+  display: grid;
+  gap: 12px;
+}
+
+.c-wallet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.c-wallet-head .c-method-logo {
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+
+.c-wallet-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 2px;
+  border-radius: 50%;
+  background: #2fbf71;
+  vertical-align: 1px;
+}
+
+.c-wallet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--sub);
+}
+
+.c-wallet-row code {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.c-pay-code {
+  display: block;
+  margin-top: 4px;
+  opacity: 0.75;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
 .c-pay-status {
   display: flex;
   align-items: center;

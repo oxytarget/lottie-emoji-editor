@@ -65,6 +65,7 @@ export const keys = {
   history: (u: number) => `u:${u}:hist`,
   gen: (u: number, id: string) => `u:${u}:gen:${id}`,
   seen: (u: number) => `u:${u}:seen`,
+  wallet: (u: number) => `u:${u}:wallet`,
   config: 'cfg',
   templateEdits: (pack: string) => `tpl:${pack}`,
   payment: (id: string) => `pay:${id}`,
@@ -119,6 +120,27 @@ export interface Account {
   role: Role;
   balance: number;
   proUntil: number;
+  /** The Gram (TON) wallet the user connected on the site. */
+  wallet?: LinkedWallet;
+}
+
+export interface LinkedWallet {
+  /** User-friendly address. */
+  address: string;
+  /** Wallet app name (Wallet in Telegram, Tonkeeper…). */
+  app?: string;
+  at: number;
+}
+
+async function linkedWallet(store: Store, userId: number): Promise<LinkedWallet | undefined> {
+  const raw = await store.get(keys.wallet(userId));
+  if (!raw) return undefined;
+  try {
+    const w = JSON.parse(raw) as LinkedWallet;
+    return w?.address ? w : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The account (a new user gets the starter generations once). */
@@ -129,7 +151,8 @@ export async function account(store: Store, env: Env, userId: number, config: Ap
   const balance = Number((await store.get(keys.balance(userId))) ?? 0);
   const proUntil = Number((await store.get(keys.pro(userId))) ?? 0);
   const role: Role = isAdmin(env, userId) ? 'admin' : proUntil > now ? 'pro' : 'user';
-  return { id: userId, role, balance, proUntil };
+  const wallet = await linkedWallet(store, userId);
+  return { id: userId, role, balance, proUntil, ...(wallet ? { wallet } : {}) };
 }
 
 /** What a template is to this user: usable, PRO-only (and the user is not PRO), or hidden from clients. */
@@ -208,6 +231,24 @@ export async function handleMe(req: Request, env: Env, cors: Record<string, stri
  * Spends generations for a design: `id` (made by the editor once per design) makes it idempotent — the same
  * request again (double tap, a retry after a lost answer) costs nothing more and returns the same result.
  */
+/** A user-friendly (base64url, 48 chars) or raw (workchain:hex) TON address. */
+export const WALLET_ADDRESS = /^(?:[A-Za-z0-9_-]{48}|-?\d{1,3}:[0-9a-fA-F]{64})$/;
+
+/**
+ * Links (or with an empty address unlinks) the Gram wallet the user connected on the site with TON Connect. Only
+ * shown back and used as the wallet to pay from — payments are still confirmed on the blockchain by their comment.
+ */
+export async function handleWallet(req: Request, env: Env, cors: Record<string, string>): Promise<Response> {
+  const r = await accountRequest(req, env, cors);
+  if ('error' in r) return r.error!;
+  const address = String(r.body.address ?? '').trim();
+  if (address && !WALLET_ADDRESS.test(address)) return json({ ok: false, error: 'bad-request' }, 400, cors);
+  const app = String(r.body.app ?? '').replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 40) || undefined;
+  await r.store.set(keys.wallet(r.userId), address ? JSON.stringify({ address, app, at: Date.now() }) : '');
+  const acc = await account(r.store, env, r.userId, await readConfig(r.store));
+  return json({ ok: true, account: acc }, 200, cors);
+}
+
 export async function handleGenerate(req: Request, env: Env, cors: Record<string, string>): Promise<Response> {
   const r = await accountRequest(req, env, cors);
   if ('error' in r) return r.error!;

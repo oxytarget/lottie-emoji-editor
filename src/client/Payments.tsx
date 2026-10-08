@@ -5,15 +5,84 @@ import { DEFAULT_CLIENT_CONFIG, isPro, useAccount } from '../state/account';
 import { useEditor } from '../state/store';
 import { CheckIcon, CopyIcon, CrownIcon, SparkleIcon, WalletIcon, WarningIcon } from '../components/icons';
 import { formatDate, money, useCT } from './i18n';
-import { formatTon, payWithTonConnect, tonkeeperLink, tonTransferLink } from './ton';
+import { formatGram, payWithTonConnect, shortAddress, tonkeeperLink, tonTransferLink, useWallet } from './ton';
 import { Sheet } from './Sheets';
 import { useNav, usePaymentState } from './state';
 
-/** Official pictures: Crypto Bot's Telegram avatar, the TON symbol from TON's documentation. */
+/** Official pictures: Crypto Bot's Telegram avatar; the Gram (GRAM, ex-Toncoin) coin icon as Tonkeeper ships it. */
 const LOGOS: Record<PayMethod, { src: string }> = {
   cryptobot: { src: 'https://t.me/i/userpic/320/CryptoBot.jpg' },
-  ton: { src: `${import.meta.env.BASE_URL}pay/ton_symbol.svg` },
+  ton: { src: `${import.meta.env.BASE_URL}pay/gram.svg` },
 };
+
+type CT = ReturnType<typeof useCT>;
+
+/** Why a payment could not be made, in words (with the code, so the admin can tell what to fix). */
+function payError(t: CT, error: string, detail?: string): { text: string; code?: string } {
+  if (error === 'accounts-off') return { text: t('payErrAccountsOff'), code: error };
+  if (error === 'method-off') return { text: t('payErrMethodOff'), code: error };
+  if (error === 'no-rate') return { text: t('payErrRate'), code: error };
+  if (error === 'guest' || error === 'unauthorized') return { text: t('payErrGuest'), code: error };
+  if (error === 'network') return { text: t('payErrNetwork') };
+  if (error === 'provider') {
+    if (detail && /UNAUTHORIZED|TOKEN/i.test(detail)) return { text: t('payErrToken'), code: detail };
+    return { text: t('payErrProvider', { d: detail || '?' }), code: detail };
+  }
+  return { text: t('payFailed'), code: error };
+}
+
+/** The wallet connected on the site: connect, see which, disconnect. */
+export function WalletCard() {
+  const t = useCT();
+  const wallet = useWallet();
+  const linked = useAccount((s) => s.account?.wallet);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    wallet.init();
+  }, []);
+  const busy = wallet.status === 'idle' || wallet.status === 'loading' || wallet.status === 'connecting';
+  return (
+    <section className="card c-wallet">
+      <div className="c-wallet-head">
+        <MethodLogo method="ton" />
+        <span className="c-method-text">
+          <strong>{t('walletTitle')}</strong>
+          {wallet.status === 'connected' && wallet.address ? (
+            <small>
+              <span className="c-wallet-dot" aria-hidden /> {t('walletLinked')}
+              {wallet.app ? ` · ${wallet.app}` : ''}
+            </small>
+          ) : (
+            <small>{linked ? t('walletOther', { a: shortAddress(linked.address) }) : t('walletText')}</small>
+          )}
+        </span>
+      </div>
+      {wallet.status === 'connected' && wallet.address ? (
+        <div className="c-wallet-row">
+          <code title={wallet.address}>{shortAddress(wallet.address)}</code>
+          <button type="button" className="pill-btn is-compact" onClick={() => wallet.disconnect()}>
+            {t('walletDisconnect')}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="primary-btn"
+          disabled={busy}
+          onClick={async () => {
+            setFailed(false);
+            haptic();
+            const ok = await wallet.connect();
+            if (!ok && useWallet.getState().status !== 'connected') setFailed(true);
+          }}
+        >
+          {busy ? <span className="btn-spinner" aria-hidden /> : <WalletIcon />} {wallet.status === 'connecting' ? t('walletConnecting') : t('walletConnect')}
+        </button>
+      )}
+      {failed && <p className="hint is-center">{t('walletFailed')}</p>}
+    </section>
+  );
+}
 
 function MethodLogo({ method }: { method: PayMethod }) {
   const [broken, setBroken] = useState(false);
@@ -80,7 +149,7 @@ function Copyable({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * A payment from creation to confirmation: the backend creates it, the user pays in Crypto Bot or a TON wallet,
+ * A payment from creation to confirmation: the backend creates it, the user pays in Crypto Bot or a Gram wallet,
  * and the backend confirms it with the payment system (checked here every few seconds and on return to the app).
  */
 export function PaymentSheet({ item, method, resumeId, onClose }: { item: string; method?: PayMethod; resumeId?: string; onClose: () => void }) {
@@ -91,6 +160,8 @@ export function PaymentSheet({ item, method, resumeId, onClose }: { item: string
   const [payment, setPayment] = useState<Payment | null>(null);
   const [state, setState] = useState<'creating' | 'waiting' | 'checking' | 'paid' | 'expired' | 'failed'>(resumeId ? 'checking' : 'creating');
   const [note, setNote] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ text: string; code?: string } | null>(null);
+  const wallet = useWallet();
   const started = useRef(false);
 
   const check = useCallback(
@@ -133,7 +204,11 @@ export function PaymentSheet({ item, method, resumeId, onClose }: { item: string
     }
     (async () => {
       const res = await createPayment(item, method!);
-      if (!res.ok) return setState('failed');
+      if (!res.ok) {
+        setFailure(payError(t, res.error, typeof res.detail === 'string' ? res.detail : undefined));
+        return setState('failed');
+      }
+      if (res.payment.method === 'ton') useWallet.getState().init();
       setPayment(res.payment);
       setPending({ id: res.payment.id, item });
       setState('waiting');
@@ -182,7 +257,11 @@ export function PaymentSheet({ item, method, resumeId, onClose }: { item: string
       )}
       {state === 'failed' && (
         <p className="note is-error" role="alert">
-          <WarningIcon width={16} height={16} /> {t('payFailed')}
+          <WarningIcon width={16} height={16} />{' '}
+          <span>
+            {failure?.text ?? t('payFailed')}
+            {failure?.code && <small className="c-pay-code">{t('payErrCode', { c: failure.code })}</small>}
+          </span>
         </p>
       )}
       {state === 'paid' && payment && (
@@ -217,7 +296,7 @@ export function PaymentSheet({ item, method, resumeId, onClose }: { item: string
             <MethodLogo method={payment.method} />
             <span>
               <strong>{payment.item === 'pro' ? 'PRO' : t('packageCount', { n: payment.count })}</strong>
-              <small>{payment.method === 'ton' && payment.ton ? `${formatTon(payment.ton.nano)} TON` : money(payment.usd)}</small>
+              <small>{payment.method === 'ton' && payment.ton ? `${formatGram(payment.ton.nano)} · ${money(payment.usd)}` : money(payment.usd)}</small>
             </span>
           </div>
           <p className="hint">{t('payWaitingText')}</p>
@@ -229,7 +308,7 @@ export function PaymentSheet({ item, method, resumeId, onClose }: { item: string
           {payment.method === 'ton' && payment.ton && (
             <>
               <button type="button" className="primary-btn" onClick={payTon}>
-                <WalletIcon /> {t('payTonConnect')}
+                <WalletIcon /> {wallet.status === 'connected' && wallet.address ? t('payFrom', { a: shortAddress(wallet.address) }) : t('payTonConnect')}
               </button>
               <button
                 type="button"
@@ -244,7 +323,7 @@ export function PaymentSheet({ item, method, resumeId, onClose }: { item: string
               </button>
               <details className="howto">
                 <summary>{t('tonManual')}</summary>
-                <Copyable label={t('tonAmount')} value={`${formatTon(payment.ton.nano)} TON`} />
+                <Copyable label={t('tonAmount')} value={formatGram(payment.ton.nano)} />
                 <Copyable label={t('tonAddress')} value={payment.ton.address} />
                 <Copyable label={t('tonComment')} value={payment.ton.comment} />
               </details>
@@ -328,6 +407,7 @@ export function TopUpScreen() {
           <Methods item={`pkg:${pkg.id}`} price={pkg.usd} onStart={setPaying} />
         </section>
       )}
+      {config.methods.ton && status === 'ready' && <WalletCard />}
       {paying && pkg && <PaymentSheet item={`pkg:${pkg.id}`} method={paying} onClose={() => setPaying(null)} />}
     </div>
   );

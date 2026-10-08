@@ -15,7 +15,7 @@
 import { corsHeaders, json, telegram, TelegramError, type Env } from './shared.js';
 import { authenticate, LINK_DAYS, linkCode, pickLang, TEXTS, validateLinkCode, webhookSecret } from './telegram.js';
 import { botInfo, handlePack } from './packs.js';
-import { handleAdmin, handleCatalog, handleGenerate, handleMe, handleTemplateEdits, paidFor } from './account.js';
+import { handleAdmin, handleCatalog, handleGenerate, handleMe, handleTemplateEdits, handleWallet, paidFor } from './account.js';
 import { handleCryptoPayWebhook, handlePay, handlePayStatus } from './payments.js';
 import {
   handleSticker,
@@ -187,6 +187,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     if (req.method === 'POST' && action === 'generate') return handleGenerate(req, env, cors);
     if (req.method === 'POST' && action === 'pay') return handlePay(req, env, cors);
     if (req.method === 'POST' && action === 'pay-status') return handlePayStatus(req, env, cors);
+    if (req.method === 'POST' && action === 'wallet') return handleWallet(req, env, cors);
     if (req.method === 'POST' && action === 'admin') return handleAdmin(req, env, cors);
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/api/health')) {
@@ -215,10 +216,11 @@ export function envFromProcess(vars: Record<string, string | undefined>): Env {
     KV_TOKEN: vars.KV_REST_API_TOKEN || vars.UPSTASH_REDIS_REST_TOKEN,
     STORE: vars.STORE,
     CRYPTO_PAY_TOKEN: vars.CRYPTO_PAY_TOKEN?.trim(),
-    CRYPTO_PAY_NETWORK: vars.CRYPTO_PAY_NETWORK,
-    TON_WALLET: vars.TON_WALLET?.trim(),
-    TON_NETWORK: vars.TON_NETWORK,
-    TONCENTER_API_KEY: vars.TONCENTER_API_KEY,
-    TON_USD_RATE: vars.TON_USD_RATE,
+    CRYPTO_PAY_NETWORK: vars.CRYPTO_PAY_NETWORK?.trim().toLowerCase(),
+    // Toncoin is Gram (GRAM) now; GRAM_* names work too.
+    TON_WALLET: (vars.GRAM_WALLET || vars.TON_WALLET)?.trim(),
+    TON_NETWORK: (vars.GRAM_NETWORK || vars.TON_NETWORK)?.trim().toLowerCase(),
+    TONCENTER_API_KEY: vars.TONCENTER_API_KEY?.trim(),
+    TON_USD_RATE: vars.GRAM_USD_RATE || vars.TON_USD_RATE,
   };
 }

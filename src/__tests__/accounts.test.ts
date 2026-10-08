@@ -198,3 +198,83 @@ describe('payments', () => {
     expect((await call('pay', 1, { item: 'pro', method: 'ton' }, { ...base, TON_WALLET: undefined })).status).toBe(503);
   });
 });
+
+describe('invoice errors, Gram and the linked wallet', () => {
+  /** Crypto Pay answering with `answer` per call (a function of the request body). */
+  function cryptoPayAnswers(answer: (method: string, body: Record<string, unknown>) => unknown) {
+    const calls: Array<{ method: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const method = url.split('/api/')[1];
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        calls.push({ method, body });
+        return new Response(JSON.stringify(answer(method, body)));
+      }),
+    );
+    return calls;
+  }
+
+  it('says why Crypto Pay refused the invoice (no secrets), and tells the store or method being off apart', async () => {
+    cryptoPayAnswers(() => ({ ok: false, error: { code: 401, name: 'UNAUTHORIZED' } }));
+    const res = await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' });
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ ok: false, error: 'provider', detail: 'UNAUTHORIZED' });
+    expect(JSON.stringify(res.body)).not.toContain('cp-token');
+    expect((await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' }, { ...base, STORE: undefined })).body.error).toBe('accounts-off');
+    expect((await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' }, { ...base, CRYPTO_PAY_TOKEN: undefined })).body.error).toBe('method-off');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }),
+    );
+    expect((await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' })).body).toMatchObject({ error: 'provider', detail: 'NETWORK' });
+  });
+
+  it('makes the invoice without the "back to the app" button when Crypto Pay refuses its URL', async () => {
+    const calls = cryptoPayAnswers((_m, body) =>
+      body.paid_btn_url ? { ok: false, error: { code: 400, name: 'PAID_BTN_URL_INVALID' } } : { ok: true, result: { invoice_id: 7, status: 'active', bot_invoice_url: 'https://t.me/CryptoBot?start=IV7' } },
+    );
+    const res = await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' });
+    expect(res.body).toMatchObject({ ok: true, payment: { invoiceId: 7, url: 'https://t.me/CryptoBot?start=IV7' } });
+    expect(calls.map((c) => c.body.paid_btn_url)).toEqual(['https://example.github.io/app/', undefined]);
+    expect(calls[1].body).toMatchObject({ currency_type: 'fiat', fiat: 'USD', amount: '1.99', payload: res.body.payment.id });
+    // A non-web app address never goes into the button.
+    const plain = cryptoPayAnswers(() => ({ ok: true, result: { invoice_id: 8, status: 'active' } }));
+    await call('pay', 1, { item: 'pkg:p10', method: 'cryptobot' }, { ...base, APP_URL: 'tg://resolve?domain=bot' });
+    expect(plain[0].body.paid_btn_name).toBeUndefined();
+  });
+
+  it('prices Gram with the GRAM rate (TON before the rename)', async () => {
+    const env = { ...base, TON_USD_RATE: undefined };
+    cryptoPayAnswers(() => ({
+      ok: true,
+      result: [
+        { is_valid: true, source: 'USDT', target: 'USD', rate: '1' },
+        { is_valid: true, source: 'GRAM', target: 'USD', rate: '2' },
+      ],
+    }));
+    const gram = await call('pay', 1, { item: 'pkg:p10', method: 'ton' }, env);
+    // $1.99 / $2 → 0.995 GRAM.
+    expect(gram.body.payment.ton).toMatchObject({ address: 'UQshop', nano: '995000000' });
+    cryptoPayAnswers(() => ({ ok: true, result: [{ is_valid: true, source: 'TON', target: 'USD', rate: '1' }] }));
+    expect((await call('pay', 1, { item: 'pkg:p10', method: 'ton' }, env)).body.payment.ton.nano).toBe('1990000000');
+    cryptoPayAnswers(() => ({ ok: true, result: [] }));
+    expect((await call('pay', 1, { item: 'pkg:p10', method: 'ton' }, env)).body.error).toBe('no-rate');
+  });
+
+  it('links the wallet connected on the site to the account, and pays from it', async () => {
+    const address = 'UQBvW8Z5huBkMJYdnfAEM5JqTNkuWX3diqYENkWsIL0XggGG';
+    expect((await call('wallet', 1, { address: 'not an address' })).status).toBe(400);
+    expect((await call('wallet', null, { address })).status).toBe(401);
+    const linked = await call('wallet', 1, { address, app: 'Tonkeeper' });
+    expect(linked.body.account.wallet).toMatchObject({ address, app: 'Tonkeeper' });
+    expect((await call('me', 1)).body.account.wallet.address).toBe(address);
+    expect((await call('me', 2)).body.account.wallet).toBeUndefined();
+    const pay = await call('pay', 1, { item: 'pkg:p10', method: 'ton' });
+    expect(pay.body.payment.ton).toMatchObject({ from: address, comment: `ES-${pay.body.payment.id}` });
+    expect((await call('wallet', 1, { address: '' })).body.account.wallet).toBeUndefined();
+    expect((await call('me', 1)).body.account.wallet).toBeUndefined();
+  });
+});

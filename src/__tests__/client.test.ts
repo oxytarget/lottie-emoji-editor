@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { artToSvg, balanceLines, buildDesign } from '../client/design';
-import { commentPayload, formatTon, tonTransferLink } from '../client/ton';
+import { commentPayload, formatGram, shortAddress, tonTransferLink } from '../client/ton';
 import { svgToArt } from '../content/svg';
 
 const square = (fill: string, size = 100) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><rect x="0" y="0" width="${size}" height="${size}" fill="${fill}"/></svg>`;
@@ -60,8 +60,9 @@ describe('TON payments', () => {
   });
 
   it('formats amounts and transfer links', () => {
-    expect(formatTon('398000000')).toBe('0.398');
-    expect(formatTon('5000000000')).toBe('5');
+    expect(formatGram('398000000')).toBe('0.398 GRAM');
+    expect(formatGram('5000000000')).toBe('5 GRAM');
+    expect(shortAddress('UQAbcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHxyZk')).toBe('UQAb…xyZk');
     expect(tonTransferLink('UQx', '1000', 'ES-1 a')).toBe('ton://transfer/UQx?amount=1000&text=ES-1%20a');
   });
 });

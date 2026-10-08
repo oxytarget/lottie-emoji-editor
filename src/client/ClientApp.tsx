@@ -3,7 +3,7 @@ import { packsAvailable } from '../lib/botApi';
 import { useLinkedCode } from '../lib/botLink';
 import { isTelegram, telegramUser, useBackButton } from '../lib/telegram';
 import type { Theme } from '../lib/theme';
-import { isPro, useAccount } from '../state/account';
+import { DEFAULT_CLIENT_CONFIG, isPro, useAccount } from '../state/account';
 import { usePoster } from '../state/posters';
 import { useEditor } from '../state/store';
 import type { Compiled } from '../state/useCompiled';
@@ -16,7 +16,7 @@ import { TelegramLinkCard, unlink } from '../components/TelegramLink';
 import { AdminScreen } from './Admin';
 import { CreateScreen, useApplyInputs } from './CreateScreen';
 import { formatDate, formatDateTime, useCT, type ClientKey } from './i18n';
-import { BalanceChip, PendingPaymentBar, ProScreen, TopUpScreen } from './Payments';
+import { BalanceChip, PendingPaymentBar, ProScreen, TopUpScreen, WalletCard } from './Payments';
 import { listResults, type StoredResult } from './results';
 import { ResultSheet } from './Sheets';
 import { useNav, type Screen } from './state';
@@ -214,6 +214,7 @@ function Profile({ theme, onTheme }: { theme: Theme; onTheme: () => void }) {
   const user = telegramUser();
   const name = user?.name ?? (account ? `#${account.id}` : t('helloGuest'));
   const role = account?.role ?? 'user';
+  const methods = useAccount((s) => s.config?.methods ?? DEFAULT_CLIENT_CONFIG.methods);
   return (
     <div className="page">
       <section className="card profile-card">
@@ -251,6 +252,7 @@ function Profile({ theme, onTheme }: { theme: Theme; onTheme: () => void }) {
         </div>
       </section>
       {packsAvailable() && !isTelegram() && !linked && <TelegramLinkCard />}
+      {status === 'ready' && methods.ton && <WalletCard />}
       {status === 'ready' && (
         <div className="row-actions c-profile-actions">
           <button type="button" className="pill-btn" onClick={() => go('topup')}>

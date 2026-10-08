@@ -164,10 +164,13 @@ MVP веб-застосунку (і Telegram Mini App) для створення
   доставляє клієнтам лише оплачені дизайни (`gens` у `/api/send`, `/api/pack` перевіряються).
 - **Поповнення:** пакети (за замовчуванням 10 / 25 / 50 / 100 за $1.99 / 3.99 / 6.99 / 11.99) → спосіб оплати:
   - **Crypto Bot** (Crypto Pay API): рахунок у USD, оплата будь-якою криптою в Telegram;
-  - **TON Wallet**: TON Connect (Wallet у Telegram, Tonkeeper, MyTonWallet…) або посилання `ton://transfer` з унікальним
-    коментарем; ціна в TON — за курсом Crypto Pay (`getExchangeRates`) або `TON_USD_RATE`.
+  - **Gram** (GRAM — так з 15.06.2026 називається Toncoin; блокчейн TON, адреси й гаманці ті самі): клієнт
+    **підключає гаманець на сайті** (TON Connect — Wallet у Telegram, Tonkeeper, MyTonWallet…; картка «Gram-гаманець» у
+    «Поповненні» та профілі), гаманець привʼязується до акаунта (`POST /api/app/wallet`), і оплата йде з нього одним
+    дотиком; або посилання `ton://transfer` / вручну з унікальним коментарем. Ціна в GRAM — за курсом Crypto Pay
+    (`getExchangeRates`, GRAM або TON) або `GRAM_USD_RATE`.
   Генерації зараховуються **тільки після підтвердження платіжною системою** (Crypto Pay `getInvoices` / підписаний вебхук,
-  транзакція TON у блокчейні через toncenter — коментар, сума, не bounced) і рівно один раз. Незавершений платіж
+  транзакція GRAM у блокчейні TON через toncenter — коментар, сума, не bounced) і рівно один раз. Незавершений платіж
   запам'ятовується — після повернення з гаманця перевірка продовжується сама.
 - **PRO** ($4.99 / 30 днів, +30 генерацій): PRO-шаблони, генерація в усіх шаблонах одним натисканням, усі шрифти
   й кольорові теми з градієнтами, пак з усіх дизайнів одразу. Статус PRO і доступ до PRO-шаблонів перевіряє бекенд.
@@ -185,10 +188,16 @@ MVP веб-застосунку (і Telegram Mini App) для створення
 3. Crypto Bot: у [@CryptoBot](https://t.me/CryptoBot) → Crypto Pay → Create App → токен у `CRYPTO_PAY_TOKEN`
    (для тестів — [@CryptoTestnetBot](https://t.me/CryptoTestnetBot) і `CRYPTO_PAY_NETWORK=testnet`). Там же в Webhooks
    увімкнути й вказати `https://<проєкт>.vercel.app/api/app/cryptopay` (без нього оплата підтверджується опитуванням).
-4. TON: `TON_WALLET` — адреса гаманця для прийому; за бажанням `TONCENTER_API_KEY` (ключ від @tonapibot, без нього
-   1 запит/с), `TON_USD_RATE` (фіксований курс), `TON_NETWORK=testnet`.
+4. Gram: `GRAM_WALLET` (або старе `TON_WALLET`) — адреса гаманця для прийому; за бажанням `TONCENTER_API_KEY` (ключ
+   від @tonapibot, без нього 1 запит/с), `GRAM_USD_RATE` (фіксований курс), `GRAM_NETWORK=testnet`.
 
-API: `POST /api/app/me | generate | pay | pay-status | admin`, `GET /api/app/catalog | template-edits`,
+Якщо рахунок не створюється, у вікні оплати тепер видно причину й код: `accounts-off` — не підключене сховище (п. 1);
+`method-off` — немає токена/гаманця; `UNAUTHORIZED` — токен Crypto Pay не той або з іншої мережі (токен з
+@CryptoTestnetBot працює лише з `CRYPTO_PAY_NETWORK=testnet`, з @CryptoBot — без неї); інші коди — помилка Crypto Pay
+(див. [документацію](https://help.crypt.bot/crypto-pay-api)). Якщо Crypto Pay не приймає кнопку «повернутися в
+застосунок» (`paid_btn_url`), рахунок створюється без неї.
+
+API: `POST /api/app/me | generate | pay | pay-status | wallet | admin`, `GET /api/app/catalog | template-edits`,
 `POST /api/app/cryptopay` (вебхук) — одна функція Vercel `api/app/[action].ts`.
 
 ## Запуск
