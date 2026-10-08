@@ -247,7 +247,7 @@ export function PaymentSheet({ item, method, resumeId, onClose }: { item: string
     }
   };
 
-  const title = state === 'paid' ? t('paidTitle') : state === 'expired' ? t('expiredTitle') : t('payWaiting');
+  const title = state === 'paid' ? t('paidTitle') : state === 'expired' ? t('expiredTitle') : state === 'failed' ? t('payFailedTitle') : t('payWaiting');
   return (
     <Sheet title={title} onClose={onClose} className="c-pay">
       {state === 'creating' && (

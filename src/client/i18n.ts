@@ -210,15 +210,16 @@ const dict = {
   paidPro: L('PRO активовано до {date}', 'PRO активирован до {date}', 'PRO is on until {date}'),
   expiredTitle: L('Час оплати минув', 'Время оплаты истекло', 'The payment expired'),
   expiredText: L('Створіть новий платіж — гроші не списано.', 'Создайте новый платёж — деньги не списаны.', 'Create a new payment — nothing was charged.'),
+  payFailedTitle: L('Платіж не створено', 'Платёж не создан', 'Payment not created'),
   payFailed: L(
     'Не вдалося створити платіж. Спробуйте ще раз або оберіть інший спосіб.',
     'Не удалось создать платёж. Попробуйте ещё раз или выберите другой способ.',
     'Could not create the payment. Try again or pick another method.',
   ),
   payErrAccountsOff: L(
-    'Оплата ще не налаштована на сервері (немає бази акаунтів). Повідомте адміністратора.',
-    'Оплата ещё не настроена на сервере (нет базы аккаунтов). Сообщите администратору.',
-    'Payments are not set up on the server yet (no account storage). Tell the admin.',
+    'Оплата ще не налаштована: до сервера не підключено сховище Redis (Upstash), де зберігаються баланси й платежі. Повідомте адміністратора.',
+    'Оплата ещё не настроена: к серверу не подключено хранилище Redis (Upstash), где хранятся балансы и платежи. Сообщите администратору.',
+    'Payments are not set up yet: the server has no Redis (Upstash) storage for balances and payments. Tell the admin.',
   ),
   payErrMethodOff: L(
     'Цей спосіб оплати вимкнено. Оберіть інший.',
