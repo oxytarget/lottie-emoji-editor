@@ -19,7 +19,8 @@ export function Slider(props: {
   onReset?: () => void;
 }) {
   const { label, value, min, max, step, onChange, format } = props;
-  const pct = ((value - min) / (max - min)) * 100;
+  // Values set elsewhere (a pinch on the canvas) may lie outside the slider: the fill stays inside it.
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
   return (
     <label className="slider">
       <span className="slider-head">

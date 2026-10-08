@@ -6,6 +6,7 @@ import { useEditor } from '../state/store';
 import { CheckIcon, CopyIcon, CrownIcon, SparkleIcon, WalletIcon, WarningIcon } from '../components/icons';
 import { formatDate, money, useCT } from './i18n';
 import { formatGram, payWithTonConnect, shortAddress, tonkeeperLink, tonTransferLink, useWallet } from './ton';
+import { Crown3D } from './Crown3D';
 import { Sheet, SheetButton } from './Sheets';
 import { useNav, usePaymentState } from './state';
 
@@ -408,98 +409,6 @@ export function TopUpScreen() {
       )}
       {config.methods.ton && status === 'ready' && <WalletCard />}
       {paying && pkg && <PaymentSheet item={`pkg:${pkg.id}`} method={paying} onClose={() => setPaying(null)} />}
-    </div>
-  );
-}
-
-/** The crown's outline (100×86): five points with jewels on a band. */
-function CrownFace({ id, edge }: { id: string; edge?: boolean }) {
-  return (
-    <svg viewBox="0 0 100 86" aria-hidden>
-      {!edge && (
-        <defs>
-          <linearGradient id={`${id}-gold`} x1="0" y1="0" x2="0.35" y2="1">
-            <stop offset="0" stopColor="#fff6c2" />
-            <stop offset="0.35" stopColor="#ffd23f" />
-            <stop offset="0.72" stopColor="#f5a00b" />
-            <stop offset="1" stopColor="#b45309" />
-          </linearGradient>
-          <linearGradient id={`${id}-band`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#ffe17a" />
-            <stop offset="1" stopColor="#c46a07" />
-          </linearGradient>
-          <radialGradient id={`${id}-ruby`} cx="0.35" cy="0.3" r="0.8">
-            <stop offset="0" stopColor="#ffd1dc" />
-            <stop offset="0.45" stopColor="#ff3b6b" />
-            <stop offset="1" stopColor="#8a0b2e" />
-          </radialGradient>
-          <radialGradient id={`${id}-sapphire`} cx="0.35" cy="0.3" r="0.8">
-            <stop offset="0" stopColor="#d6e4ff" />
-            <stop offset="0.45" stopColor="#5b7cff" />
-            <stop offset="1" stopColor="#1e2a8a" />
-          </radialGradient>
-        </defs>
-      )}
-      <path
-        d="M12 64 L5 20 L29 40 L50 8 L71 40 L95 20 L88 64 Z"
-        fill={edge ? '#a35a06' : `url(#${id}-gold)`}
-        strokeLinejoin="round"
-        stroke={edge ? '#a35a06' : '#9a5205'}
-        strokeWidth="2.5"
-      />
-      <rect x="10" y="62" width="80" height="16" rx="5" fill={edge ? '#8f4d05' : `url(#${id}-band)`} stroke={edge ? '#8f4d05' : '#9a5205'} strokeWidth="2.5" />
-      {!edge && (
-        <>
-          <path
-            d="M18 56 L14 30 L30 45 L50 17"
-            fill="none"
-            stroke="#fff8d6"
-            strokeOpacity="0.65"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <circle cx="5" cy="20" r="5.5" fill={`url(#${id}-sapphire)`} />
-          <circle cx="95" cy="20" r="5.5" fill={`url(#${id}-sapphire)`} />
-          <circle cx="50" cy="8" r="6.5" fill={`url(#${id}-ruby)`} />
-          <circle cx="30" cy="70" r="4" fill={`url(#${id}-sapphire)`} />
-          <ellipse cx="50" cy="70" rx="7" ry="5" fill={`url(#${id}-ruby)`} />
-          <circle cx="70" cy="70" r="4" fill={`url(#${id}-sapphire)`} />
-        </>
-      )}
-    </svg>
-  );
-}
-
-/** Layers of the crown along its depth: two faces and the gold edge between them. */
-const CROWN_DEPTH = 24;
-
-/** PRO's crown: a golden 3D crown turning slowly, with a glow and sparkles. */
-function Crown3D() {
-  return (
-    <div className="c-crown3d" aria-hidden>
-      <span className="c-crown3d-glow" />
-      <span className="c-crown3d-shadow" />
-      <div className="c-crown3d-float">
-        <div className="c-crown3d-spin">
-          {Array.from({ length: CROWN_DEPTH }, (_, i) => {
-            const face = i === 0 || i === CROWN_DEPTH - 1;
-            const z = (i - (CROWN_DEPTH - 1) / 2) * 0.62;
-            return (
-              <div
-                key={i}
-                className={`c-crown3d-layer${face ? ' is-face' : ''}`}
-                style={{ transform: `translateZ(${z}px)${i === 0 ? ' rotateY(180deg)' : ''}` }}
-              >
-                <CrownFace id={`crown${i}`} edge={!face} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {[0, 1, 2, 3].map((i) => (
-        <SparkleIcon key={i} className={`c-crown3d-spark is-${i}`} width={14} height={14} />
-      ))}
     </div>
   );
 }
